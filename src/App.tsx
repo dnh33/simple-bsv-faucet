@@ -34,18 +34,53 @@ interface ClaimTransaction {
 const FAUCET_AMOUNT = Number(import.meta.env.VITE_FAUCET_AMOUNT) || 1000;
 const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY || "";
 const WOC_API_URL = "https://api.whatsonchain.com/v1/bsv/main";
+const BITAILS_API_URL = "https://api.bitails.io";
 const FAUCET_IDENTIFIER = "bsv-faucet"; // Used in OP_RETURN
 const IS_LOCALHOST =
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1";
 
-// Helper function to convert string to hex
+// Helper function to convert string to hex (for OP_RETURN)
 const stringToHex = (str: string): string => {
   const encoder = new TextEncoder();
   const bytes = encoder.encode(str);
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+};
+
+// Helper function to fetch transaction hex from Bitails
+const fetchTransactionHex = async (txid: string): Promise<string> => {
+  try {
+    const response = await fetch(`${BITAILS_API_URL}/download/tx/${txid}/hex`, {
+      headers: {
+        "Content-Type": "application/gzip",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Bitails API error: ${response.statusText}`);
+    }
+
+    const buffer = await response.arrayBuffer();
+    // Convert buffer to string first
+    const decoder = new TextDecoder();
+    const hexString = decoder.decode(buffer);
+    console.log("Fetched hex string:", hexString);
+    return hexString;
+  } catch (error) {
+    console.error("Error fetching from Bitails:", error);
+    // Fallback to WhatsOnChain if Bitails fails
+    const response = await fetch(`${WOC_API_URL}/tx/${txid}/hex`);
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch source transaction: ${response.statusText}`
+      );
+    }
+    const hexString = await response.text();
+    console.log("Fetched hex string (fallback):", hexString);
+    return hexString;
+  }
 };
 
 function App() {
@@ -194,7 +229,7 @@ function App() {
     try {
       const utxos = await fetchUtxos();
       if (!utxos.length) {
-        throw new Error("No UTXOs available");
+        throw new Error("No confirmed UTXOs available");
       }
 
       // Calculate total input amount
@@ -203,19 +238,13 @@ function App() {
       // Create transaction
       const tx = new Transaction();
 
-      // Fetch and add inputs with source transactions
+      // Add inputs from confirmed UTXOs
       for (const utxo of utxos) {
-        // Fetch raw transaction
-        const response = await fetch(`${WOC_API_URL}/tx/${utxo.tx_hash}/hex`);
-        if (!response.ok) {
-          throw new Error(
-            `Failed to fetch source transaction: ${response.statusText}`
-          );
-        }
-        const sourceTxHex = await response.text();
+        const sourceTxHex = await fetchTransactionHex(utxo.tx_hash);
+        console.log("Creating source transaction from hex:", sourceTxHex);
         const sourceTransaction = Transaction.fromHex(sourceTxHex);
+        console.log("Created source transaction:", sourceTransaction);
 
-        // Add input with source transaction
         tx.addInput({
           sourceTransaction,
           sourceOutputIndex: utxo.tx_pos,
@@ -238,8 +267,9 @@ function App() {
       });
 
       // Calculate fee
-      const feeModel = new SatoshisPerKilobyte(1);
+      const feeModel = new SatoshisPerKilobyte(1); // Back to 1000 sats/kb
       const fee = await feeModel.computeFee(tx);
+      console.log("Computed fee:", fee);
 
       // Ensure we have enough funds
       if (totalInput < FAUCET_AMOUNT + fee) {
@@ -260,16 +290,33 @@ function App() {
       }
 
       // Sign and broadcast
+      console.log("Signing transaction...");
       await tx.sign();
+      console.log("Broadcasting transaction...");
       const result = await tx.broadcast();
+      console.log("Broadcast result:", result);
+      if (!result) {
+        throw new Error("Broadcast failed - no transaction ID returned");
+      }
       const txid = result.toString();
+      console.log("Transaction ID:", txid);
 
-      setStatus(`Success! TXID: ${txid}`);
-      updateBalance();
-      fetchRecentClaims();
+      setStatus(
+        `Success! View transaction: https://whatsonchain.com/tx/${txid}`
+      );
+      // Wait a moment before updating balance and claims to allow for propagation
+      setTimeout(() => {
+        updateBalance();
+        fetchRecentClaims();
+      }, 2000);
     } catch (error: any) {
       console.error("Error processing claim:", error);
-      setStatus(`Error processing claim: ${error.message || "Unknown error"}`);
+      // Add more context to the error message if it's from broadcasting
+      const errorMessage = error.message || "Unknown error";
+      const broadcastError = errorMessage.includes("Broadcast failed")
+        ? "Transaction could not be broadcast to the network. Please try again."
+        : errorMessage;
+      setStatus(`Error processing claim: ${broadcastError}`);
     } finally {
       setLoading(false);
     }
