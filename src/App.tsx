@@ -18,18 +18,6 @@ interface UTXO {
   scriptPubKey?: string;
 }
 
-interface ClaimTransaction {
-  txid: string;
-  timestamp: string;
-  outputs: Array<{
-    value: number;
-    scriptPubKey?: {
-      addresses?: string[];
-      asm?: string;
-    };
-  }>;
-}
-
 // Constants
 const FAUCET_AMOUNT = Number(import.meta.env.VITE_FAUCET_AMOUNT) || 1000;
 const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY || "";
@@ -89,11 +77,10 @@ function App() {
   const [captchaToken, setCaptchaToken] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
-  const [recentClaims, setRecentClaims] = useState<ClaimTransaction[]>([]);
   const [copySuccess, setCopySuccess] = useState(false);
   const [successTxid, setSuccessTxid] = useState<string | null>(null);
 
-  // Initialize faucet wallet - private key from environment variable
+  // Initialize faucet wallet
   const privKey = PrivateKey.fromWif(
     import.meta.env.VITE_FAUCET_PRIVATE_KEY || ""
   );
@@ -101,10 +88,8 @@ function App() {
 
   useEffect(() => {
     updateBalance();
-    fetchRecentClaims();
     const interval = setInterval(() => {
       updateBalance();
-      fetchRecentClaims();
     }, 30000); // Update every 30 seconds
     return () => clearInterval(interval);
   }, []);
@@ -148,42 +133,6 @@ function App() {
     }
   };
 
-  const fetchRecentClaims = async () => {
-    try {
-      const address = faucetAddress.toString();
-      const response = await fetch(`${WOC_API_URL}/address/${address}/history`);
-      if (!response.ok) {
-        throw new Error(`WhatsOnChain API error: ${response.statusText}`);
-      }
-      const history = await response.json();
-
-      // Filter transactions with our OP_RETURN identifier
-      const claims = await Promise.all(
-        history.map(async (tx: { tx_hash: string }) => {
-          const txResponse = await fetch(
-            `${WOC_API_URL}/tx/hash/${tx.tx_hash}`
-          );
-          const txData = await txResponse.json();
-          // Check if transaction has our OP_RETURN identifier
-          const hasIdentifier = txData.vout.some((out: any) =>
-            out.scriptPubKey?.asm?.includes(FAUCET_IDENTIFIER)
-          );
-          if (hasIdentifier) {
-            return {
-              txid: tx.tx_hash,
-              timestamp: txData.time,
-              outputs: txData.vout,
-            };
-          }
-          return null;
-        })
-      );
-      setRecentClaims(claims.filter(Boolean));
-    } catch (error) {
-      console.error("Error fetching claims:", error);
-    }
-  };
-
   const updateBalance = async () => {
     try {
       const utxos = await fetchUtxos();
@@ -194,18 +143,39 @@ function App() {
     }
   };
 
-  const checkRecentClaim = (claimAddress: string): boolean => {
-    // Check if address has claimed in the last 24 hours
-    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-    return recentClaims.some((claim) => {
-      const claimTime = new Date(claim.timestamp).getTime();
-      return (
-        claimTime > oneDayAgo &&
-        claim.outputs.some((out) =>
-          out.scriptPubKey?.addresses?.includes(claimAddress)
-        )
-      );
-    });
+  const checkRecentClaim = async (claimAddress: string): Promise<boolean> => {
+    try {
+      const response = await fetch("/.netlify/functions/checkClaim", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ address: claimAddress }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to check claim status");
+      }
+
+      const data = await response.json();
+      if (!data.canClaim) {
+        // If timeRemaining is provided, we can show a more helpful message
+        if (data.timeRemaining) {
+          const hoursRemaining = Math.ceil(
+            data.timeRemaining / (60 * 60 * 1000)
+          );
+          setStatus(
+            `Please wait ${hoursRemaining} hours before claiming again`
+          );
+        }
+        return true; // Has claimed recently
+      }
+
+      return false; // Hasn't claimed recently
+    } catch (error) {
+      console.error("Error checking claim status:", error);
+      return false; // Allow claim if check fails
+    }
   };
 
   const handleClaim = async () => {
@@ -219,7 +189,8 @@ function App() {
       return;
     }
 
-    if (checkRecentClaim(address)) {
+    const hasRecentClaim = await checkRecentClaim(address);
+    if (hasRecentClaim) {
       setStatus("Address has already claimed in the last 24 hours");
       return;
     }
@@ -312,10 +283,9 @@ function App() {
       setSuccessTxid(txid);
       setStatus("");
 
-      // Wait a moment before updating balance and claims to allow for propagation
+      // Wait a moment before updating balance
       setTimeout(() => {
         updateBalance();
-        fetchRecentClaims();
       }, 2000);
     } catch (error: any) {
       setSuccessTxid(null);
@@ -414,23 +384,6 @@ function App() {
             {status}
           </p>
         )}
-
-        <div className="recent-claims">
-          <h2>Recent Claims</h2>
-          <ul className="claims-list">
-            {recentClaims.map((claim) => (
-              <li key={claim.txid}>
-                <a
-                  href={`https://whatsonchain.com/tx/${claim.txid}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {new Date(claim.timestamp).toLocaleString()}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
       </div>
     </div>
   );
