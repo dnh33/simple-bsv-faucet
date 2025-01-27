@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
-import HCaptcha from "@hcaptcha/react-hcaptcha";
+import { useEffect, useState } from "react";
 import {
   PrivateKey,
-  P2PKH,
   Transaction,
+  P2PKH,
   Script,
   SatoshisPerKilobyte,
 } from "@bsv/sdk";
@@ -19,62 +18,14 @@ interface UTXO {
 }
 
 // Constants
-const FAUCET_AMOUNT = Number(import.meta.env.VITE_FAUCET_AMOUNT) || 1000;
-const HCAPTCHA_SITE_KEY = import.meta.env.VITE_HCAPTCHA_SITE_KEY || "";
+const FAUCET_AMOUNT = Number(import.meta.env.VITE_FAUCET_AMOUNT) || 1;
 const WOC_API_URL = "https://api.whatsonchain.com/v1/bsv/main";
 const BITAILS_API_URL = "https://api.bitails.io";
-const FAUCET_IDENTIFIER = "bsv-faucet"; // Used in OP_RETURN
-const IS_LOCALHOST =
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1";
-
-// Helper function to convert string to hex (for OP_RETURN)
-const stringToHex = (str: string): string => {
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(str);
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-};
-
-// Helper function to fetch transaction hex from Bitails
-const fetchTransactionHex = async (txid: string): Promise<string> => {
-  try {
-    const response = await fetch(`${BITAILS_API_URL}/download/tx/${txid}/hex`, {
-      headers: {
-        "Content-Type": "application/gzip",
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Bitails API error: ${response.statusText}`);
-    }
-
-    const buffer = await response.arrayBuffer();
-    // Convert buffer to string first
-    const decoder = new TextDecoder();
-    const hexString = decoder.decode(buffer);
-    console.log("Fetched hex string:", hexString);
-    return hexString;
-  } catch (error) {
-    console.error("Error fetching from Bitails:", error);
-    // Fallback to WhatsOnChain if Bitails fails
-    const response = await fetch(`${WOC_API_URL}/tx/${txid}/hex`);
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch source transaction: ${response.statusText}`
-      );
-    }
-    const hexString = await response.text();
-    console.log("Fetched hex string (fallback):", hexString);
-    return hexString;
-  }
-};
+const FAUCET_IDENTIFIER = "BSVFaucet";
 
 function App() {
   const [balance, setBalance] = useState<number>(0);
   const [address, setAddress] = useState("");
-  const [captchaToken, setCaptchaToken] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -98,38 +49,64 @@ function App() {
     try {
       const address = faucetAddress.toString();
       console.log("Fetching UTXOs for address:", address);
-
       const response = await fetch(`${WOC_API_URL}/address/${address}/unspent`);
       if (!response.ok) {
         throw new Error(`WhatsOnChain API error: ${response.statusText}`);
       }
-
       const utxos = await response.json();
       console.log("Raw UTXOs response:", utxos);
 
-      // Validate UTXO data
-      if (!Array.isArray(utxos)) {
-        throw new Error("Invalid UTXO response format");
-      }
-
-      const validUtxos = utxos.filter((utxo) => {
-        const isValid =
-          utxo &&
-          typeof utxo.tx_hash === "string" &&
-          typeof utxo.tx_pos === "number" &&
-          typeof utxo.value === "number";
-
+      // Validate and filter UTXOs
+      const validUtxos = utxos.filter((utxo: any) => {
+        const isValid = utxo.tx_hash && utxo.tx_pos !== undefined && utxo.value;
         if (!isValid) {
-          console.warn("Invalid UTXO found:", utxo);
+          console.log("Invalid UTXO found:", utxo);
         }
         return isValid;
       });
 
-      console.log("Validated UTXOs:", validUtxos);
-      return validUtxos;
+      // Sort by confirmation count (most confirmed first)
+      return validUtxos.sort((a: UTXO, b: UTXO) => b.height - a.height);
     } catch (error) {
       console.error("Error fetching UTXOs:", error);
-      return [];
+      throw error;
+    }
+  };
+
+  const fetchTransactionHex = async (txid: string): Promise<string> => {
+    try {
+      // Try Bitails first
+      const response = await fetch(
+        `${BITAILS_API_URL}/download/tx/${txid}/hex`,
+        {
+          headers: {
+            "Content-Type": "application/gzip",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Bitails API error: ${response.statusText}`);
+      }
+
+      const buffer = await response.arrayBuffer();
+      // Convert buffer to string first
+      const decoder = new TextDecoder();
+      const hexString = decoder.decode(buffer);
+      console.log("Fetched hex string:", hexString);
+      return hexString;
+    } catch (error) {
+      console.error("Error fetching from Bitails:", error);
+      // Fallback to WhatsOnChain if Bitails fails
+      const response = await fetch(`${WOC_API_URL}/tx/${txid}/hex`);
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch source transaction: ${response.statusText}`
+        );
+      }
+      const hexString = await response.text();
+      console.log("Fetched hex string (fallback):", hexString);
+      return hexString;
     }
   };
 
@@ -146,11 +123,6 @@ function App() {
   const handleClaim = async () => {
     if (!address) {
       setStatus("Please enter your BSV address");
-      return;
-    }
-
-    if (!IS_LOCALHOST && !captchaToken) {
-      setStatus("Please complete the captcha");
       return;
     }
 
@@ -198,7 +170,7 @@ function App() {
       });
 
       // Calculate fee
-      const feeModel = new SatoshisPerKilobyte(1); // Back to 1000 sats/kb
+      const feeModel = new SatoshisPerKilobyte(1); // 1 sat/kb
       const fee = await feeModel.computeFee(tx);
       console.log("Computed fee:", fee);
 
@@ -259,14 +231,16 @@ function App() {
     }
   };
 
-  const handleCopyAddress = async () => {
-    try {
-      await navigator.clipboard.writeText(faucetAddress.toString());
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy address:", err);
-    }
+  const handleCopyAddress = () => {
+    navigator.clipboard.writeText(faucetAddress.toString());
+    setCopySuccess(true);
+    setTimeout(() => setCopySuccess(false), 2000);
+  };
+
+  const stringToHex = (str: string): string => {
+    return Array.from(str)
+      .map((c) => c.charCodeAt(0).toString(16).padStart(2, "0"))
+      .join("");
   };
 
   return (
@@ -303,18 +277,9 @@ function App() {
           />
         </div>
 
-        {!IS_LOCALHOST && (
-          <div className="h-captcha">
-            <HCaptcha
-              sitekey={HCAPTCHA_SITE_KEY}
-              onVerify={(token) => setCaptchaToken(token)}
-            />
-          </div>
-        )}
-
         <button
           onClick={handleClaim}
-          disabled={loading || (!IS_LOCALHOST && !captchaToken)}
+          disabled={loading}
           className={loading ? "loading" : ""}
         >
           {loading ? "Processing..." : `Claim ${FAUCET_AMOUNT} satoshis`}
