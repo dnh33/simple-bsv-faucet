@@ -143,41 +143,6 @@ function App() {
     }
   };
 
-  const checkRecentClaim = async (claimAddress: string): Promise<boolean> => {
-    try {
-      const response = await fetch("/.netlify/functions/checkClaim", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ address: claimAddress }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to check claim status");
-      }
-
-      const data = await response.json();
-      if (!data.canClaim) {
-        // If timeRemaining is provided, we can show a more helpful message
-        if (data.timeRemaining) {
-          const hoursRemaining = Math.ceil(
-            data.timeRemaining / (60 * 60 * 1000)
-          );
-          setStatus(
-            `Please wait ${hoursRemaining} hours before claiming again`
-          );
-        }
-        return true; // Has claimed recently
-      }
-
-      return false; // Hasn't claimed recently
-    } catch (error) {
-      console.error("Error checking claim status:", error);
-      return false; // Allow claim if check fails
-    }
-  };
-
   const handleClaim = async () => {
     if (!address) {
       setStatus("Please enter your BSV address");
@@ -186,12 +151,6 @@ function App() {
 
     if (!IS_LOCALHOST && !captchaToken) {
       setStatus("Please complete the captcha");
-      return;
-    }
-
-    const hasRecentClaim = await checkRecentClaim(address);
-    if (hasRecentClaim) {
-      setStatus("Address has already claimed in the last 24 hours");
       return;
     }
 
