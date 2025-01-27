@@ -369,6 +369,10 @@ button:hover::before {
   border-radius: var(--radius-lg);
   font-size: var(--font-size-sm);
   animation: status-appear 0.3s ease-out;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-4);
 }
 
 .notification.success {
@@ -382,7 +386,7 @@ button:hover::before {
   text-decoration: none;
   border-bottom: 1px dashed var(--color-success);
   transition: all var(--transition-fast);
-  word-break: break-all;
+  white-space: nowrap;
 }
 
 .notification .tx-link:hover {
