@@ -91,6 +91,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [recentClaims, setRecentClaims] = useState<ClaimTransaction[]>([]);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [successTxid, setSuccessTxid] = useState<string | null>(null);
 
   // Initialize faucet wallet - private key from environment variable
   const privKey = PrivateKey.fromWif(
@@ -294,24 +295,31 @@ function App() {
       await tx.sign();
       console.log("Broadcasting transaction...");
       const result = await tx.broadcast();
-      console.log("Broadcast result:", result);
+      console.log("Raw broadcast result:", result);
+      console.log("Broadcast result type:", typeof result);
       if (!result) {
         throw new Error("Broadcast failed - no transaction ID returned");
       }
-      const txid = result.toString();
-      console.log("Transaction ID:", txid);
 
-      setStatus(
-        `Success! View transaction: https://whatsonchain.com/tx/${txid}`
-      );
+      // Get the transaction ID and convert it to hex string
+      const txidBytes = tx.id();
+      const txid = Array.from(txidBytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      console.log("Transaction ID:", txid);
+      console.log("Transaction ID type:", typeof txid);
+
+      setSuccessTxid(txid);
+      setStatus("");
+
       // Wait a moment before updating balance and claims to allow for propagation
       setTimeout(() => {
         updateBalance();
         fetchRecentClaims();
       }, 2000);
     } catch (error: any) {
+      setSuccessTxid(null);
       console.error("Error processing claim:", error);
-      // Add more context to the error message if it's from broadcasting
       const errorMessage = error.message || "Unknown error";
       const broadcastError = errorMessage.includes("Broadcast failed")
         ? "Transaction could not be broadcast to the network. Please try again."
@@ -383,14 +391,24 @@ function App() {
           {loading ? "Processing..." : `Claim ${FAUCET_AMOUNT} satoshis`}
         </button>
 
+        {successTxid && (
+          <div className="notification success">
+            🎉 Transaction successful!{" "}
+            <a
+              href={`https://whatsonchain.com/tx/${successTxid}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="tx-link"
+            >
+              View on WhatsOnChain →
+            </a>
+          </div>
+        )}
+
         {status && (
           <p
             className={`status ${
-              status.toLowerCase().includes("success")
-                ? "success"
-                : status.toLowerCase().includes("error")
-                ? "error"
-                : "warning"
+              status.toLowerCase().includes("error") ? "error" : "warning"
             }`}
           >
             {status}

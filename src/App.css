@@ -361,3 +361,30 @@ button:hover::before {
     width: 100%;
   }
 }
+
+.notification {
+  margin-top: var(--spacing-4);
+  padding: var(--spacing-4);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-sm);
+  animation: status-appear 0.3s ease-out;
+}
+
+.notification.success {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--color-success);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.notification .tx-link {
+  color: var(--color-success);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--color-success);
+  transition: all var(--transition-fast);
+  word-break: break-all;
+}
+
+.notification .tx-link:hover {
+  border-bottom-style: solid;
+  opacity: 0.8;
+}
