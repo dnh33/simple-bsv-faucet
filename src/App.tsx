@@ -19,6 +19,9 @@ interface UTXO {
 
 // Constants
 const FAUCET_AMOUNT = Number(import.meta.env.VITE_FAUCET_AMOUNT) || 1;
+const [minBonus, maxBonus] = (import.meta.env.VITE_BONUS_RANGE || "1-5")
+  .split("-")
+  .map(Number);
 const WOC_API_URL = "https://api.whatsonchain.com/v1/bsv/main";
 const BITAILS_API_URL = "https://api.bitails.io";
 const FAUCET_IDENTIFIER = "BSVFaucet";
@@ -30,6 +33,9 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [successTxid, setSuccessTxid] = useState<string | null>(null);
+  const [currentBonus, setCurrentBonus] = useState<number>(0);
+  const [remainingBonusClaims, setRemainingBonusClaims] = useState<number>(0);
+  const [lastBonusTime, setLastBonusTime] = useState<number>(0);
 
   // Initialize faucet wallet
   const privKey = PrivateKey.fromWif(
@@ -120,6 +126,18 @@ function App() {
     }
   };
 
+  // Helper function for true randomness between 0 and 1
+  const getSecureRandom = () => {
+    const array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+    return array[0] / (0xffffffff + 1);
+  };
+
+  // Helper for random integer in range (min, max inclusive)
+  const getSecureRandomInt = (min: number, max: number) => {
+    return Math.floor(getSecureRandom() * (max - min + 1)) + min;
+  };
+
   const handleClaim = async () => {
     if (!address) {
       setStatus("Please enter your BSV address");
@@ -130,6 +148,32 @@ function App() {
     setStatus("Processing claim...");
 
     try {
+      const now = Date.now();
+      const timeSinceLastBonus = now - lastBonusTime;
+      const fifteenMinutes = 15 * 60 * 1000;
+
+      const canActivateBonus =
+        remainingBonusClaims === 0 &&
+        timeSinceLastBonus >= fifteenMinutes &&
+        getSecureRandom() < 0.05 && // 5% chance with true randomness
+        getSecureRandom() < timeSinceLastBonus / (24 * 60 * 60 * 1000);
+
+      if (canActivateBonus) {
+        const bonus = getSecureRandomInt(minBonus, maxBonus);
+        const claims = getSecureRandomInt(1, 21); // Random 1-21 claims with true randomness
+        setCurrentBonus(bonus);
+        setRemainingBonusClaims(claims);
+        setLastBonusTime(now);
+        console.log(
+          `Activated bonus: +${bonus} sats for next ${claims} claims! (After ${Math.floor(
+            timeSinceLastBonus / 60000
+          )} minutes)`
+        );
+      }
+
+      const claimAmount =
+        FAUCET_AMOUNT + (remainingBonusClaims > 0 ? currentBonus : 0);
+
       const utxos = await fetchUtxos();
       if (!utxos.length) {
         throw new Error("No confirmed UTXOs available");
@@ -155,10 +199,10 @@ function App() {
         });
       }
 
-      // Add recipient output
+      // Add recipient output with bonus if active
       tx.addOutput({
         lockingScript: new P2PKH().lock(address),
-        satoshis: FAUCET_AMOUNT,
+        satoshis: claimAmount,
       });
 
       // Add OP_RETURN output
@@ -170,21 +214,21 @@ function App() {
       });
 
       // Calculate fee
-      const feeModel = new SatoshisPerKilobyte(1); // 1 sat/kb
+      const feeModel = new SatoshisPerKilobyte(1);
       const fee = await feeModel.computeFee(tx);
       console.log("Computed fee:", fee);
 
       // Ensure we have enough funds
-      if (totalInput < FAUCET_AMOUNT + fee) {
+      if (totalInput < claimAmount + fee) {
         throw new Error(
           `Insufficient funds in faucet. Have: ${totalInput}, Need: ${
-            FAUCET_AMOUNT + fee
+            claimAmount + fee
           }`
         );
       }
 
       // Add change output if needed
-      const changeAmount = totalInput - FAUCET_AMOUNT - fee;
+      const changeAmount = totalInput - claimAmount - fee;
       if (changeAmount > 0) {
         tx.addOutput({
           lockingScript: new P2PKH().lock(faucetAddress),
@@ -213,6 +257,15 @@ function App() {
 
       setSuccessTxid(txid);
       setStatus("");
+
+      // Update bonus claims if active
+      if (remainingBonusClaims > 0) {
+        setRemainingBonusClaims((prev) => prev - 1);
+        if (remainingBonusClaims === 1) {
+          // Last bonus claim
+          setCurrentBonus(0);
+        }
+      }
 
       // Wait a moment before updating balance
       setTimeout(() => {
@@ -282,7 +335,11 @@ function App() {
           disabled={loading}
           className={loading ? "loading" : ""}
         >
-          {loading ? "Processing..." : `Claim ${FAUCET_AMOUNT} satoshis`}
+          {loading
+            ? "Processing..."
+            : `Claim ${FAUCET_AMOUNT}${
+                remainingBonusClaims > 0 ? ` + ${currentBonus} bonus` : ""
+              } satoshis`}
         </button>
 
         {successTxid && (
