@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { Transaction, P2PKH, Script, SatoshisPerKilobyte, OP } from "@bsv/sdk";
+import {
+  Transaction,
+  P2PKH,
+  Script,
+  SatoshisPerKilobyte,
+  OP,
+  PrivateKey,
+} from "@bsv/sdk";
 import "./styles/components";
 import "./App.css";
 
@@ -79,20 +86,18 @@ function App() {
           console.log("Using hex string for input:", hexString);
           const sourceTransaction = Transaction.fromHex(hexString);
 
-          // In production, we don't add unlocking script template yet
-          if (import.meta.env.PROD) {
-            tx.addInput({
-              sourceTransaction,
-              sourceOutputIndex: utxo.tx_pos,
-            });
-          } else {
-            // In development, add unlocking script template with private key
-            tx.addInput({
-              sourceTransaction,
-              sourceOutputIndex: utxo.tx_pos,
-              unlockingScriptTemplate: new P2PKH().unlock(privateKey),
-            });
-          }
+          // Always add unlocking script template for fee computation
+          const unlockingTemplate = new P2PKH().unlock(
+            import.meta.env.PROD
+              ? PrivateKey.fromRandom() // Placeholder for fee calculation
+              : privateKey
+          );
+
+          tx.addInput({
+            sourceTransaction,
+            sourceOutputIndex: utxo.tx_pos,
+            unlockingScriptTemplate: unlockingTemplate,
+          });
         } catch (err) {
           console.error("Error adding input:", err);
           throw new Error(

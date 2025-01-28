@@ -17,10 +17,10 @@ export const handler = async (event) => {
     const privateKey = PrivateKey.fromWif(process.env.FAUCET_PRIVATE_KEY);
     const unsignedTx = Transaction.fromHex(event.body);
 
-    // Create new transaction with unlocking scripts
+    // Create new transaction with proper unlocking scripts
     const tx = new Transaction();
 
-    // Copy inputs with unlocking scripts
+    // Copy inputs with real private key unlocking scripts
     unsignedTx.inputs.forEach((input) => {
       tx.addInput({
         sourceTransaction: input.sourceTransaction,
@@ -29,15 +29,18 @@ export const handler = async (event) => {
       });
     });
 
-    // Copy all outputs
+    // Copy outputs exactly as they are
     unsignedTx.outputs.forEach((output) => {
       tx.addOutput(output);
     });
 
-    // Sign transaction
+    console.log("Transaction before signing:", tx.toHex());
+
+    // Sign the transaction
     await tx.sign();
 
-    // Return the signed transaction hex
+    console.log("Transaction after signing:", tx.toHex());
+
     return {
       statusCode: 200,
       body: tx.toHex(),
