@@ -1,0 +1,44 @@
+# robots.txt for BSV Faucet (https://push-the-button.app)
+
+# Google crawlers
+User-agent: Googlebot
+User-agent: Googlebot-Image
+User-agent: Googlebot-Mobile
+User-agent: Googlebot-News
+Allow: /
+
+# Bing crawlers
+User-agent: Bingbot
+Allow: /
+
+# All other crawlers
+User-agent: *
+Allow: /
+
+# Common static assets
+Allow: /*.js$
+Allow: /*.css$
+Allow: /images/
+Allow: /favicon.ico
+Allow: /apple-touch-icon.png
+Allow: /favicon-32x32.png
+Allow: /favicon-16x16.png
+Allow: /safari-pinned-tab.svg
+Allow: /manifest.json
+
+# Private directories and files
+Disallow: /.env
+Disallow: /.git/
+Disallow: /node_modules/
+Disallow: /src/
+Disallow: /dist/
+Disallow: /build/
+Disallow: /coverage/
+Disallow: /tests/
+Disallow: /.github/
+Disallow: /.netlify/
+
+# Sitemap
+Sitemap: https://push-the-button.app/sitemap.xml
+
+# Note: Crawl-delay is not supported by Google, using robots meta tags instead 
