@@ -7,10 +7,10 @@
 
   <!-- Homepage -->
   <url>
-    <loc>https://push-the-button.app/</loc>
+    <loc>https://www.push-the-button.app/</loc>
     <priority>1.0</priority>
     <image:image>
-      <image:loc>https://push-the-button.app/apple-touch-icon.png</image:loc>
+      <image:loc>https://www.push-the-button.app/apple-touch-icon.png</image:loc>
       <image:title>BSV Faucet Logo</image:title>
     </image:image>
   </url>

@@ -1,7 +1,7 @@
 /**
  * Logger utility that only shows logs in development environment
  */
-const isProduction = window.location.hostname === "push-the-button.app";
+const isProduction = window.location.hostname === "www.push-the-button.app";
 
 export const logger = {
   log: (...args: unknown[]) => {
