@@ -63,15 +63,6 @@ function App() {
         throw new Error("Please enter a BSV address");
       }
 
-      /*  // Check for specific address and add delay
-      if (recipientAddress === "12qBusyX1YqmVJ1MF4squWaLwNHLx9teVd") {
-        setStatus("Processing claim...");
-        await new Promise((resolve) => setTimeout(resolve, 3000)); // 3 second delay
-        throw new Error(
-          "This address is rate limited. Please try again later."
-        );
-      } */
-
       // Fetch UTXOs
       const utxos = await fetchUtxos(faucetAddress);
       if (utxos.length === 0) {
@@ -79,7 +70,7 @@ function App() {
       }
 
       // Create transaction
-      const tx = new Transaction();
+      let tx = new Transaction();
 
       // Add inputs from confirmed UTXOs
       for (const utxo of utxos) {
@@ -87,11 +78,21 @@ function App() {
           const hexString = await fetchTransactionHex(utxo.tx_hash);
           console.log("Using hex string for input:", hexString);
           const sourceTransaction = Transaction.fromHex(hexString);
-          tx.addInput({
-            sourceTransaction,
-            sourceOutputIndex: utxo.tx_pos,
-            unlockingScriptTemplate: new P2PKH().unlock(privateKey),
-          });
+
+          // In production, we don't add unlocking script template yet
+          if (import.meta.env.PROD) {
+            tx.addInput({
+              sourceTransaction,
+              sourceOutputIndex: utxo.tx_pos,
+            });
+          } else {
+            // In development, add unlocking script template with private key
+            tx.addInput({
+              sourceTransaction,
+              sourceOutputIndex: utxo.tx_pos,
+              unlockingScriptTemplate: new P2PKH().unlock(privateKey),
+            });
+          }
         } catch (err) {
           console.error("Error adding input:", err);
           throw new Error(
@@ -152,8 +153,25 @@ function App() {
         });
       }
 
-      // Sign transaction
-      await tx.sign();
+      // Sign transaction based on environment
+      if (import.meta.env.PROD) {
+        // In production, use Netlify function
+        const response = await fetch("/.netlify/functions/sign-transaction", {
+          method: "POST",
+          body: tx.toHex(),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "Failed to sign transaction");
+        }
+
+        const signedTxHex = await response.text();
+        tx = Transaction.fromHex(signedTxHex);
+      } else {
+        // In development, sign locally
+        await tx.sign();
+      }
 
       // Broadcast transaction
       const result = await tx.broadcast();
