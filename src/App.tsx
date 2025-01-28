@@ -5,6 +5,7 @@ import "./App.css";
 
 import { useUTXOs, useFaucetWallet, useBonusSystem } from "./utils/hooks";
 import { FAUCET_AMOUNT, FAUCET_IDENTIFIER } from "./utils/constants";
+import { logger } from "./utils/logger";
 
 import { FaucetInfo } from "./components/FaucetInfo";
 import { AddressInput } from "./components/AddressInput";
@@ -85,7 +86,7 @@ function App() {
       for (const utxo of utxos) {
         try {
           const hexString = await fetchTransactionHex(utxo.tx_hash);
-          console.log("Using hex string for input:", hexString);
+          logger.log("Using hex string for input:", hexString);
           const sourceTransaction = Transaction.fromHex(hexString);
           tx.addInput({
             sourceTransaction,
@@ -93,7 +94,7 @@ function App() {
             unlockingScriptTemplate: new P2PKH().unlock(privateKey),
           });
         } catch (err) {
-          console.error("Error adding input:", err);
+          logger.error("Error adding input:", err);
           throw new Error(
             `Failed to add input: ${
               err instanceof Error ? err.message : "Unknown error"
@@ -128,7 +129,7 @@ function App() {
           satoshis: 0,
         });
       } catch (err) {
-        console.error("Error adding outputs:", err);
+        logger.error("Error adding outputs:", err);
         throw new Error(
           `Failed to add outputs: ${
             err instanceof Error ? err.message : "Unknown error"
@@ -172,7 +173,7 @@ function App() {
         updateBalance();
       }, 2000);
     } catch (error) {
-      console.error("Error processing claim:", error);
+      logger.error("Error processing claim:", error);
       setStatus(
         `Error processing claim: ${
           error instanceof Error ? error.message : "Unknown error"

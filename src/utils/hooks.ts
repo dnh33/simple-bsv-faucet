@@ -3,6 +3,7 @@ import { fetchUtxos, fetchTransactionHex } from "../services/api";
 import { useState } from "react";
 import { PrivateKey } from "@bsv/sdk";
 import { FAUCET_PRIVATE_KEY } from "./constants";
+import { logger } from "./logger";
 
 interface UseUTXOsProps {
   faucetAddress: string;
@@ -16,7 +17,7 @@ export function useUTXOs({ faucetAddress, onBalanceUpdate }: UseUTXOsProps) {
       const balance = utxos.reduce((sum, utxo) => sum + utxo.value, 0);
       onBalanceUpdate(balance);
     } catch (error) {
-      console.error("Error fetching balance:", error);
+      logger.error("Error fetching balance:", error);
     }
   }, [faucetAddress, onBalanceUpdate]);
 
@@ -37,6 +38,7 @@ export function useFaucetWallet() {
   const handleCopyAddress = useCallback(() => {
     navigator.clipboard.writeText(faucetAddress);
     setCopySuccess(true);
+    logger.info("Faucet address copied to clipboard");
     setTimeout(() => setCopySuccess(false), 2000);
   }, [faucetAddress]);
 
@@ -61,6 +63,7 @@ export function useBonusSystem() {
       const claims = Math.floor(Math.random() * 3) + 1; // 1-3 claims
       setCurrentBonus(bonus);
       setRemainingBonusClaims(claims);
+      logger.info(`Bonus activated: +${bonus} sats for next ${claims} claims!`);
       return true;
     }
     return false;
@@ -69,6 +72,9 @@ export function useBonusSystem() {
   const activateBonus = useCallback((bonus: number, claims: number) => {
     setCurrentBonus(bonus);
     setRemainingBonusClaims(claims);
+    logger.info(
+      `Manual bonus activated: +${bonus} sats for next ${claims} claims!`
+    );
   }, []);
 
   const decrementBonusClaims = useCallback(() => {
@@ -76,6 +82,7 @@ export function useBonusSystem() {
       const newValue = prev - 1;
       if (newValue === 0) {
         setCurrentBonus(0);
+        logger.info("Bonus round completed!");
       }
       return newValue;
     });

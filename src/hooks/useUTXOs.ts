@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { UTXO } from "../types";
 import { WOC_API_URL } from "../utils/constants";
+import { logger } from "../utils/logger";
 
 interface UseUTXOsProps {
   faucetAddress: string;
@@ -10,7 +11,7 @@ interface UseUTXOsProps {
 export function useUTXOs({ faucetAddress, onBalanceUpdate }: UseUTXOsProps) {
   const fetchUtxos = useCallback(async (): Promise<UTXO[]> => {
     try {
-      console.log("Fetching UTXOs for address:", faucetAddress);
+      logger.log("Fetching UTXOs for address:", faucetAddress);
       const response = await fetch(
         `${WOC_API_URL}/address/${faucetAddress}/unspent`
       );
@@ -18,13 +19,13 @@ export function useUTXOs({ faucetAddress, onBalanceUpdate }: UseUTXOsProps) {
         throw new Error(`WhatsOnChain API error: ${response.statusText}`);
       }
       const utxos = await response.json();
-      console.log("Raw UTXOs response:", utxos);
+      logger.log("Raw UTXOs response:", utxos);
 
       // Validate and filter UTXOs
       const validUtxos = utxos.filter((utxo: UTXO) => {
         const isValid = utxo.tx_hash && utxo.tx_pos !== undefined && utxo.value;
         if (!isValid) {
-          console.log("Invalid UTXO found:", utxo);
+          logger.log("Invalid UTXO found:", utxo);
         }
         return isValid;
       });
@@ -32,7 +33,7 @@ export function useUTXOs({ faucetAddress, onBalanceUpdate }: UseUTXOsProps) {
       // Sort by confirmation count (most confirmed first)
       return validUtxos.sort((a: UTXO, b: UTXO) => b.height - a.height);
     } catch (err) {
-      console.error("Error fetching UTXOs:", err);
+      logger.error("Error fetching UTXOs:", err);
       throw err;
     }
   }, [faucetAddress]);
@@ -43,7 +44,7 @@ export function useUTXOs({ faucetAddress, onBalanceUpdate }: UseUTXOsProps) {
       const balance = utxos.reduce((sum, utxo) => sum + utxo.value, 0);
       onBalanceUpdate(balance);
     } catch (err) {
-      console.error("Error fetching balance:", err);
+      logger.error("Error fetching balance:", err);
     }
   }, [fetchUtxos, onBalanceUpdate]);
 

@@ -6,6 +6,7 @@ import {
   ONE_DAY,
 } from "../utils/constants";
 import { getSecureRandom, getSecureRandomInt } from "../utils/random";
+import { logger } from "../utils/logger";
 
 interface UseBonusSystemReturn {
   currentBonus: number;
@@ -35,7 +36,7 @@ export function useBonusSystem(): UseBonusSystemReturn {
       setCurrentBonus(bonus);
       setRemainingBonusClaims(claims);
       setLastBonusTime(now);
-      console.log(
+      logger.info(
         `Activated bonus: +${bonus} sats for next ${claims} claims! (After ${Math.floor(
           timeSinceLastBonus / 60000
         )} minutes)`
@@ -49,6 +50,7 @@ export function useBonusSystem(): UseBonusSystemReturn {
       if (remainingBonusClaims === 1) {
         // Last bonus claim
         setCurrentBonus(0);
+        logger.info("Bonus round completed!");
       }
     }
   };
