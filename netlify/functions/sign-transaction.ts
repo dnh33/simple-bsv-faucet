@@ -16,29 +16,25 @@ export const handler = async (event) => {
 
     console.log("Received transaction hex:", event.body);
     const privateKey = PrivateKey.fromWif(process.env.FAUCET_PRIVATE_KEY);
+
+    // Parse the original transaction
     const tx = Transaction.fromHex(event.body);
 
-    console.log("Transaction inputs:", JSON.stringify(tx.inputs, null, 2));
-    console.log("Transaction outputs:", JSON.stringify(tx.outputs, null, 2));
-
-    // Add unlocking script templates to all inputs
-    tx.inputs.forEach((input, index) => {
-      console.log(`Adding unlocking script template to input ${index}`);
-      const template = new P2PKH().unlock(privateKey);
-      console.log("Template created:", template);
-      input.unlockingScriptTemplate = template;
+    // Replace unlocking script templates with real ones
+    tx.inputs.forEach((input) => {
+      input.unlockingScriptTemplate = new P2PKH().unlock(privateKey);
     });
-
-    console.log("Transaction before signing:", tx.toHex());
 
     // Sign the transaction
     await tx.sign();
 
-    console.log("Transaction after signing:", tx.toHex());
+    // Verify we can serialize before returning
+    const signedHex = tx.toHex();
+    console.log("Signed transaction hex:", signedHex);
 
     return {
       statusCode: 200,
-      body: tx.toHex(),
+      body: signedHex,
       headers: {
         "Content-Type": "text/plain",
       },
