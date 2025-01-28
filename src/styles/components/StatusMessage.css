@@ -1,0 +1,33 @@
+.status {
+  padding: var(--spacing-4);
+  margin-bottom: var(--spacing-8);
+  border-radius: var(--radius-lg);
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+  animation: fade-in var(--transition-fast) ease-in-out;
+}
+
+.status.error {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.2);
+  color: #ef4444;
+}
+
+.status.warning {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

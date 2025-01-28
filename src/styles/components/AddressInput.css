@@ -1,0 +1,25 @@
+.input-group {
+  margin-bottom: var(--spacing-6);
+}
+
+.input-group input {
+  width: 100%;
+  padding: var(--spacing-4);
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+  transition: all var(--transition-fast);
+}
+
+.input-group input:focus {
+  outline: none;
+  border-color: var(--color-primary-light);
+  box-shadow: 0 0 0 2px rgba(123, 63, 228, 0.2);
+}
+
+.input-group input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}

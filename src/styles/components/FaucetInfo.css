@@ -1,0 +1,115 @@
+.balance {
+  font-size: var(--font-size-xl);
+  color: var(--color-text);
+  text-align: center;
+  margin-bottom: var(--spacing-6);
+  padding: var(--spacing-4);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.balance-amount {
+  color: var(--color-primary-light);
+  font-weight: bold;
+}
+
+.faucet-info {
+  margin-bottom: var(--spacing-8);
+  padding: var(--spacing-6);
+  background: linear-gradient(
+    135deg,
+    rgba(123, 63, 228, 0.1),
+    rgba(45, 212, 191, 0.1)
+  );
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: center;
+}
+
+.faucet-info h2 {
+  font-size: var(--font-size-xl);
+  margin-bottom: var(--spacing-2);
+  background: linear-gradient(
+    135deg,
+    var(--color-primary-light),
+    var(--color-secondary)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.faucet-info p {
+  color: var(--color-text-muted);
+  margin-bottom: var(--spacing-4);
+  font-size: var(--font-size-sm);
+}
+
+.address-container {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.address-container:hover {
+  background: rgba(0, 0, 0, 0.3);
+  border-color: var(--color-primary-light);
+}
+
+.faucet-address {
+  flex: 1;
+  font-family: "JetBrains Mono", monospace;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: var(--spacing-2);
+}
+
+.copy-button {
+  width: auto;
+  padding: var(--spacing-2) var(--spacing-4);
+  background: transparent;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary-light);
+  font-size: var(--font-size-sm);
+  transition: all var(--transition-fast);
+}
+
+.copy-button:hover:not(:disabled) {
+  background: var(--color-primary);
+  color: white;
+  transform: none;
+  box-shadow: none;
+}
+
+.copy-button .copied {
+  color: var(--color-success);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+@media screen and (max-width: 480px) {
+  .address-container {
+    flex-direction: column;
+    gap: var(--spacing-3);
+  }
+
+  .faucet-address {
+    width: 100%;
+    text-align: center;
+  }
+
+  .copy-button {
+    width: 100%;
+  }
+}
