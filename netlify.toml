@@ -1,0 +1,16 @@
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
+
+# Add security headers
+[[headers]]
+for = "/*"
+[headers.values]
+X-Frame-Options = "DENY"
+X-XSS-Protection = "1; mode=block"
+X-Content-Type-Options = "nosniff"
+Referrer-Policy = "strict-origin-when-cross-origin"
+Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' *.astute.llc *.netlify.app; style-src 'self' 'unsafe-inline' *.astute.llc *.netlify.app; img-src 'self' data: blob: *.astute.llc *.netlify.app; connect-src 'self' *.astute.llc *.netlify.app; font-src 'self' *.astute.llc *.netlify.app; frame-ancestors 'none';"
+Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+Permissions-Policy = "geolocation=(), microphone=(), camera=(), payment=()"
