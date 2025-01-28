@@ -14,24 +14,19 @@ export const handler = async (event) => {
       throw new Error("Private key not configured");
     }
 
+    console.log("Received transaction hex:", event.body);
     const privateKey = PrivateKey.fromWif(process.env.FAUCET_PRIVATE_KEY);
-    const unsignedTx = Transaction.fromHex(event.body);
+    const tx = Transaction.fromHex(event.body);
 
-    // Create new transaction with proper unlocking scripts
-    const tx = new Transaction();
+    console.log("Transaction inputs:", JSON.stringify(tx.inputs, null, 2));
+    console.log("Transaction outputs:", JSON.stringify(tx.outputs, null, 2));
 
-    // Copy inputs with real private key unlocking scripts
-    unsignedTx.inputs.forEach((input) => {
-      tx.addInput({
-        sourceTransaction: input.sourceTransaction,
-        sourceOutputIndex: input.sourceOutputIndex,
-        unlockingScriptTemplate: new P2PKH().unlock(privateKey),
-      });
-    });
-
-    // Copy outputs exactly as they are
-    unsignedTx.outputs.forEach((output) => {
-      tx.addOutput(output);
+    // Add unlocking script templates to all inputs
+    tx.inputs.forEach((input, index) => {
+      console.log(`Adding unlocking script template to input ${index}`);
+      const template = new P2PKH().unlock(privateKey);
+      console.log("Template created:", template);
+      input.unlockingScriptTemplate = template;
     });
 
     console.log("Transaction before signing:", tx.toHex());
@@ -50,11 +45,17 @@ export const handler = async (event) => {
     };
   } catch (error) {
     console.error("Transaction signing error:", error);
+    console.error("Error details:", {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    });
     return {
       statusCode: 400,
       body: JSON.stringify({
         error: "Failed to sign transaction",
         message: error.message,
+        details: error.stack,
       }),
       headers: {
         "Content-Type": "application/json",
