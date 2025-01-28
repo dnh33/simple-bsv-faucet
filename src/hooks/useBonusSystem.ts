@@ -26,7 +26,7 @@ export function useBonusSystem(): UseBonusSystemReturn {
     const canActivateBonus =
       remainingBonusClaims === 0 &&
       timeSinceLastBonus >= FIFTEEN_MINUTES &&
-      getSecureRandom() < 0.05 && // 5% chance with true randomness
+      getSecureRandom() < 0.005 && // 0.05% chance with true randomness
       getSecureRandom() < timeSinceLastBonus / ONE_DAY;
 
     if (canActivateBonus) {

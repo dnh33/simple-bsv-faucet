@@ -1,50 +1,133 @@
-# React + TypeScript + Vite
+# Simple BSV Faucet
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+[![Netlify Status](https://api.netlify.com/api/v1/badges/your-badge/deploy-status)](https://app.netlify.com/sites/your-site/deploys)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Currently, two official plugins are available:
+A modern, responsive Bitcoin SV (BSV) faucet built with React and TypeScript. Features a clean UI, bonus system, and rate limiting capabilities.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/dnh33/simple-bsv-faucet)
 
-## Expanding the ESLint configuration
+## Features
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+- 🎯 Clean, responsive UI
+- 💎 Random bonus rewards system
+- 🔒 Rate limiting capabilities
+- 📝 Transaction metadata via OP_RETURN
+- ⚡ Real-time balance updates
+- 🔄 Automatic UTXO management
 
-- Configure the top-level `parserOptions` property like this:
+## Quick Start
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+### Deploy to Netlify
+
+1. Click the "Deploy to Netlify" button above
+2. Connect your GitHub account
+3. Configure the following environment variables:
+   ```env
+   VITE_PRIVATE_KEY=your_private_key
+   VITE_FAUCET_AMOUNT=1000
+   VITE_BONUS_RANGE=500-2000
+   VITE_FAUCET_IDENTIFIER=your_faucet_identifier
+   ```
+
+### Local Development
+
+```bash
+# Clone the repository
+git clone https://github.com/dnh33/simple-bsv-faucet
+cd simple-bsv-faucet
+
+# Install dependencies
+npm install
+
+# Create and configure environment variables
+cp .env.example .env
+
+# Start development server
+npm run dev
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+## Configuration
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+### Environment Variables
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
+- `VITE_PRIVATE_KEY`: Your BSV private key in WIF format (Keep this secure!)
+- `VITE_FAUCET_AMOUNT`: Base amount for each claim (in satoshis)
+- `VITE_BONUS_RANGE`: Range for bonus rewards (format: "min-max")
+- `VITE_FAUCET_IDENTIFIER`: Identifier added to OP_RETURN
+
+### Rate Limiting
+
+The faucet includes built-in rate limiting for specific addresses. Modify the delay in `src/App.tsx`:
+
+```typescript
+if (recipientAddress === "your_address") {
+  setStatus("Processing claim...");
+  await new Promise((resolve) => setTimeout(resolve, 30000)); // 30 second delay
+  throw new Error("This address is rate limited");
+}
 ```
+
+## Transaction Metadata
+
+Each transaction includes OP_RETURN data with your faucet identifier:
+
+```typescript
+lockingScript: new Script([
+  { op: OP.OP_FALSE },
+  { op: OP.OP_RETURN },
+  {
+    op: OP.OP_PUSHDATA1,
+    data: Array.from(new TextEncoder().encode(FAUCET_IDENTIFIER)),
+  },
+]);
+```
+
+## Security Considerations
+
+⚠️ **Important Security Notes:**
+
+1. Never expose your private key in client-side code in production
+2. Consider implementing server-side rate limiting for production use
+3. Test thoroughly on testnet before deploying to mainnet
+4. Monitor your faucet balance and set up alerts
+
+## Customization
+
+### UI Theming
+
+Modify `src/App.css` to customize the appearance:
+
+```css
+:root {
+  --background: #13111c;
+  --primary: #8b5cf6;
+  --text: #ffffff;
+  /* Add your custom variables */
+}
+```
+
+### Bonus System
+
+Adjust bonus probability and amounts in `src/utils/hooks.ts`:
+
+```typescript
+const BONUS_PROBABILITY = 0.05; // 5% chance
+const BONUS_RANGE = [500, 2000]; // in satoshis
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+If you find this project helpful, consider donating to: `your_bsv_address`
+
+---
+
+Built with ❤️ for the Bitcoin community

@@ -393,3 +393,34 @@ button:hover::before {
   border-bottom-style: solid;
   opacity: 0.8;
 }
+
+.footer {
+  margin-top: var(--spacing-4);
+  padding: var(--spacing-4);
+  text-align: center;
+  background: var(--background);
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-3);
+}
+
+.footer a {
+  color: var(--primary);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.footer a:hover {
+  text-decoration: underline;
+}
+
+.footer .separator {
+  margin: 0 var(--spacing-2);
+  color: var(--text-muted);
+}
