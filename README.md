@@ -23,11 +23,11 @@ A modern, responsive Bitcoin SV (BSV) faucet built with React, TypeScript, and t
 - 🔄 Automatic UTXO management
 - 🛡️ Type-safe BSV operations with @bsv/sdk
 
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/dnh33/simple-bsv-faucet)
 
 ## Quick Start
 
 ### Deploy to Netlify
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/dnh33/simple-bsv-faucet)
 
 1. Click the "Deploy to Netlify" button above
 2. Connect your GitHub account
