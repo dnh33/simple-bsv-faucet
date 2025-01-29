@@ -141,24 +141,3 @@ If you find this project helpful, consider donating to: `your_bsv_address`
 
 Built with ❤️ for the Bitcoin community
 
-## BSV SDK Integration
-
-This faucet uses the latest [@bsv/sdk](https://www.npmjs.com/package/@bsv/sdk), a modern TypeScript-first Bitcoin SV development kit that provides:
-
-- Type-safe transaction building and signing
-- Efficient UTXO management
-- Modern ESM imports
-- Comprehensive Bitcoin primitives
-- Enhanced security features
-
-Example usage in our faucet:
-
-```typescript
-import { PrivateKey, Transaction, P2PKH } from "@bsv/sdk";
-
-// Type-safe transaction building
-const tx = new Transaction()
-  .from(utxos)
-  .to(recipientAddress, amount)
-  .sign(privateKey);
-```
