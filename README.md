@@ -3,18 +3,27 @@
 [![Netlify Status](https://api.netlify.com/api/v1/badges/bf1db314-b5b2-4c34-b78b-e28a23cc1410/deploy-status)](https://app.netlify.com/sites/push-the-btn/deploys)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A modern, responsive Bitcoin SV (BSV) faucet built with React and TypeScript. Features a clean UI, bonus system, and rate limiting capabilities.
+A modern, responsive Bitcoin SV (BSV) faucet built with React, TypeScript, and the latest [@bsv/sdk](https://www.npmjs.com/package/@bsv/sdk). Features a clean UI, bonus system, and rate limiting capabilities.
 
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/dnh33/simple-bsv-faucet)
+## Built With
+
+- 🚀 [React 18](https://react.dev/) - A JavaScript library for building user interfaces
+- 📘 [TypeScript](https://www.typescriptlang.org/) - Type-safe JavaScript
+- ⚡ [Vite](https://vitejs.dev/) - Next Generation Frontend Tooling
+- 💎 [@bsv/sdk v1.3+](https://www.npmjs.com/package/@bsv/sdk) - Modern TypeScript SDK for Bitcoin SV
+- 🎨 CSS3 - Custom styling with modern CSS features
 
 ## Features
 
-- 🎯 Clean, responsive UI
+- 🎯 Clean, responsive UI with modern CSS
 - 💎 Random bonus rewards system
 - 🔒 Rate limiting capabilities
 - 📝 Transaction metadata via OP_RETURN
 - ⚡ Real-time balance updates
 - 🔄 Automatic UTXO management
+- 🛡️ Type-safe BSV operations with @bsv/sdk
+
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/dnh33/simple-bsv-faucet)
 
 ## Quick Start
 
@@ -131,3 +140,25 @@ If you find this project helpful, consider donating to: `your_bsv_address`
 ---
 
 Built with ❤️ for the Bitcoin community
+
+## BSV SDK Integration
+
+This faucet uses the latest [@bsv/sdk](https://www.npmjs.com/package/@bsv/sdk), a modern TypeScript-first Bitcoin SV development kit that provides:
+
+- Type-safe transaction building and signing
+- Efficient UTXO management
+- Modern ESM imports
+- Comprehensive Bitcoin primitives
+- Enhanced security features
+
+Example usage in our faucet:
+
+```typescript
+import { PrivateKey, Transaction, P2PKH } from "@bsv/sdk";
+
+// Type-safe transaction building
+const tx = new Transaction()
+  .from(utxos)
+  .to(recipientAddress, amount)
+  .sign(privateKey);
+```
