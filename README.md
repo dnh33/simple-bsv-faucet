@@ -1,6 +1,6 @@
 # Simple BSV Faucet
 
-[![Netlify Status](https://api.netlify.com/api/v1/badges/your-badge/deploy-status)](https://app.netlify.com/sites/your-site/deploys)
+[![Netlify Status](https://api.netlify.com/api/v1/badges/your-badge/deploy-status)](https://app.netlify.com/sites/push-the-btn/deploys)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A modern, responsive Bitcoin SV (BSV) faucet built with React and TypeScript. Features a clean UI, bonus system, and rate limiting capabilities.
