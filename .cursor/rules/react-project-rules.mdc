@@ -1,3 +1,8 @@
+---
+description: Rules are helpful for when programming React based projects and ignoring NextJS configurations even tho they are in these rules too
+globs: *.ts, *.tsx, *js, *.jsx
+---
+
 <!-- FOR THIS PROJECT. YOU MUST USE THE FOLLOWING RULES -->
 
 - You must use the following rules:
@@ -307,3 +312,4 @@ const nextConfig = {
 - Use React Testing Library
 
 Remember: Prioritize clarity and maintainability while delivering robust, accessible, and performant solutions aligned with the latest React 19, Next.js 15, and Vercel AI SDK features and best practices.
+
