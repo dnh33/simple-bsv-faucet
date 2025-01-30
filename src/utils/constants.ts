@@ -21,4 +21,6 @@ export const BONUS_CHANCE = 0.05; // 5% chance
 
 // Transaction constants
 export const FAUCET_IDENTIFIER =
-  window.location.hostname === "localhost" ? "BSV Faucet Test" : "BSV Faucet";
+  window.location.hostname === "localhost"
+    ? "BSV Faucet Test"
+    : "BSV Faucet | push-the-button.app";
