@@ -135,7 +135,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-If you find this project helpful, consider donating to: `your_bsv_address`
+If you find this project helpful, consider donating to: 1KaMouXsastUR5kdoiWUaHmpBuBnY9Xevg
 
 ---
 
