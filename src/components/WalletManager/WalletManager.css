@@ -1,0 +1,378 @@
+.wallet-manager {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+  animation: fade-in 0.5s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Ripple effect for buttons */
+.ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.ripple::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ripple:active::after {
+  animation: ripple 0.6s ease-out;
+}
+
+@keyframes ripple {
+  0% {
+    width: 0;
+    height: 0;
+    opacity: 0.5;
+  }
+  100% {
+    width: 200px;
+    height: 200px;
+    opacity: 0;
+  }
+}
+
+/* Improved recipient display */
+.current-recipient {
+  padding: var(--spacing-6);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.recipient-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-4);
+}
+
+.recipient-actions {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+.icon-button {
+  padding: var(--spacing-2);
+  background: transparent;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-base);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+}
+
+.icon-button:hover {
+  background: var(--color-primary);
+  color: white;
+}
+
+.icon-button.success {
+  background: var(--color-primary);
+  color: white;
+  border-color: transparent;
+}
+
+.recipient-address-container {
+  position: relative;
+  margin-top: var(--spacing-4);
+}
+
+.recipient-address {
+  display: block;
+  width: 100%;
+  padding: var(--spacing-4);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-lg);
+  font-family: "JetBrains Mono", monospace;
+  font-size: var(--font-size-base);
+  color: var(--color-accent);
+  word-break: break-all;
+  position: relative;
+  z-index: 1;
+}
+
+.splash-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    45deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    transparent 100%
+  );
+  animation: splash-wave 2s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes splash-wave {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Improved splash button */
+.splash-button {
+  background: var(--gradient-splash);
+  padding: var(--spacing-6);
+  border-radius: var(--radius-xl);
+  position: relative;
+  overflow: hidden;
+}
+
+.splash-text {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.splash-amount {
+  font-size: var(--font-size-sm);
+  opacity: 0.8;
+}
+
+/* Mobile improvements */
+@media screen and (max-width: 640px) {
+  .wallet-manager {
+    gap: var(--spacing-4);
+  }
+
+  .current-recipient {
+    padding: var(--spacing-4);
+  }
+
+  .recipient-address {
+    font-size: var(--font-size-sm);
+    padding: var(--spacing-3);
+  }
+
+  .splash-button {
+    padding: var(--spacing-4);
+  }
+
+  .splash-text {
+    font-size: var(--font-size-base);
+  }
+}
+
+/* Keep other existing styles */
+.wallet-actions {
+  display: flex;
+  gap: var(--spacing-4);
+}
+
+.action-button {
+  flex: 1;
+  padding: var(--spacing-4);
+  background: var(--gradient-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.action-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.action-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.error-message {
+  padding: var(--spacing-4);
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--color-error);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-lg);
+}
+
+.wallet-info {
+  padding: var(--spacing-6);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.wallet-info h3 {
+  margin-bottom: var(--spacing-4);
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+}
+
+.wallet-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-6);
+}
+
+.detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.label {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.value {
+  padding: var(--spacing-2) var(--spacing-4);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-lg);
+  font-family: "JetBrains Mono", monospace;
+  font-size: var(--font-size-sm);
+  word-break: break-all;
+}
+
+.value.balance {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.recipient-count {
+  margin-bottom: 0;
+}
+
+.recipient-count label {
+  display: block;
+  margin-bottom: var(--spacing-2);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+.recipient-count input {
+  width: 100%;
+  max-width: 200px;
+  padding: var(--spacing-2) var(--spacing-4);
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+}
+
+.splash-controls {
+  padding: var(--spacing-6);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.recipient-count {
+  margin-bottom: 0;
+}
+
+.recipient-count label {
+  display: block;
+  margin-bottom: var(--spacing-2);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+.recipient-count input {
+  width: 100%;
+  max-width: 200px;
+  padding: var(--spacing-2) var(--spacing-4);
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+}
+
+.splash-button {
+  width: 100%;
+  padding: var(--spacing-4);
+  background: var(--gradient-splash);
+  color: white;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.splash-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.splash-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.splash-amount {
+  font-size: var(--font-size-sm);
+  opacity: 0.8;
+}
+
+@media screen and (max-width: 640px) {
+  .wallet-actions {
+    flex-direction: column;
+  }
+
+  .wallet-info,
+  .splash-controls {
+    padding: var(--spacing-4);
+  }
+
+  .recipient-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-2);
+  }
+
+  .refresh-button {
+    width: 100%;
+    justify-content: center;
+  }
+}

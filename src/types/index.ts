@@ -7,12 +7,36 @@ export interface UTXO {
   scriptPubKey?: string;
 }
 
+export interface TransactionOutput {
+  value: number;
+  address: string;
+  scriptPubKey?: string;
+}
+
 // Recent claim transaction interface
 export interface ClaimTransaction {
   txid: string;
   timestamp: number;
-  outputs: {
-    value: number;
-    address: string;
-  }[];
+  outputs: TransactionOutput[];
+}
+
+export interface WalletData {
+  address: string;
+  privateKey: string;
+  publicKey: string;
+  wif: string;
+}
+
+export interface TransactionRecipient {
+  address: string;
+  amount: number;
+}
+
+export interface QueuedTransaction {
+  id: string;
+  recipients: TransactionRecipient[];
+  status: "pending" | "processing" | "completed" | "failed";
+  progress: number;
+  error?: string;
+  txid?: string;
 }
