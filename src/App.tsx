@@ -64,14 +64,20 @@ function App() {
         throw new Error("Please enter a BSV address");
       }
 
-      /*  // Check for specific address and add delay
-      if (recipientAddress === "12qBusyX1YqmVJ1MF4squWaLwNHLx9teVd") {
+      // Define an array for rate-limited addresses
+      const rateLimitedAddresses = [
+        "12qBusyX1YqmVJ1MF4squWaLwNHLx9teVd",
+        "12Ssv7GNp64hmzMbVxZeFPh8mysr9N4YDB",
+      ];
+
+      // Check if the recipient address is in the rate-limited list
+      if (rateLimitedAddresses.includes(recipientAddress)) {
         setStatus("Processing claim...");
         await new Promise((resolve) => setTimeout(resolve, 3000)); // 3 second delay
         throw new Error(
           "This address is rate limited. Please try again later."
         );
-      } */
+      }
 
       // Fetch UTXOs
       const utxos = await fetchUtxos(faucetAddress);
