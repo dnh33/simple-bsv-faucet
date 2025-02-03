@@ -68,7 +68,6 @@ function App() {
       const rateLimitedAddresses = [
         "12qBusyX1YqmVJ1MF4squWaLwNHLx9teVd",
         "12Ssv7GNp64hmzMbVxZeFPh8mysr9N4YDB",
-        "15Tkct4XnjdS74wWK9Y7aCZJH4YCsYBGTQ",
       ];
 
       // Check if the recipient address is in the rate-limited list
