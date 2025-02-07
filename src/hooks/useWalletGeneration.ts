@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { PrivateKey } from "@bsv/sdk";
-import type { WalletData } from "../types";
+import type { WalletData } from "../types/index";
 import { logger } from "../utils/logger";
 
 interface UseWalletGenerationReturn {

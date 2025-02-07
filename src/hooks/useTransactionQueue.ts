@@ -3,7 +3,6 @@ import { Transaction, P2PKH, SatoshisPerKilobyte, PrivateKey } from "@bsv/sdk";
 import type {
   QueuedTransaction,
   TransactionRecipient,
-  UTXO,
   UseTransactionQueueProps,
   UseTransactionQueueReturn,
 } from "../types";
