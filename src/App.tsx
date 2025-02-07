@@ -190,9 +190,12 @@ function App() {
 
     setIsProcessing(true);
     try {
-      // Add to queue and immediately process
-      const newTransaction = addToQueue(recipients);
-      await processTransaction(newTransaction);
+      // Create individual transaction for each recipient
+      for (const recipient of recipients) {
+        // Add single recipient to queue and process immediately
+        const newTransaction = addToQueue([recipient]);
+        await processTransaction(newTransaction);
+      }
 
       // Reset recipients after successful processing
       setRecipients([]);
