@@ -11,18 +11,11 @@ import {
   Download,
 } from "lucide-react";
 import { PrivateKey } from "@bsv/sdk";
-import { useFaucetWallet } from "./hooks/useFaucetWallet";
 import { useTransactionQueue } from "./hooks/useTransactionQueue";
 import { useWalletBalance } from "./hooks/useWalletBalance";
 import { useWalletGeneration } from "./hooks/useWalletGeneration";
 import { fetchUtxos } from "./services/api";
 import "./App.css";
-
-interface Transaction {
-  address: string;
-  amount: number;
-  status: "pending" | "processing" | "completed" | "failed";
-}
 
 function App() {
   // Theme state
@@ -38,14 +31,11 @@ function App() {
     error: walletError,
   } = useWalletGeneration();
 
-  const { handleCopyAddress } = useFaucetWallet();
-  const { balance, isLoading: isBalanceLoading } = useWalletBalance(
-    wallet?.address || null
-  );
+  const { balance } = useWalletBalance(wallet?.address || null);
   const {
     queuedTransactions: transactions,
     addToQueue,
-    processQueue,
+
     processTransaction,
     clearCompleted,
   } = useTransactionQueue({
@@ -61,8 +51,8 @@ function App() {
   >([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [showImportInput, setShowImportInput] = useState(false);
-  const [importKey, setImportKey] = useState("");
+  const [_showImportInput, setShowImportInput] = useState(false);
+  const [_importKey, setImportKey] = useState("");
   const [showQueue, setShowQueue] = useState(true);
   const [copySuccess, setCopySuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
