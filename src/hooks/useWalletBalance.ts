@@ -50,8 +50,8 @@ export function useWalletBalance(
   useEffect(() => {
     refreshBalance();
 
-    // Refresh balance every 30 seconds
-    const interval = setInterval(refreshBalance, 30000);
+    // Refresh balance every 3 seconds
+    const interval = setInterval(refreshBalance, 3000);
     return () => clearInterval(interval);
   }, [address]);
 

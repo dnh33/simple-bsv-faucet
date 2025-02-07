@@ -1,23 +1,16 @@
 import { useState, useCallback } from "react";
 import { Transaction, P2PKH, SatoshisPerKilobyte, PrivateKey } from "@bsv/sdk";
-import type { QueuedTransaction, TransactionRecipient, UTXO } from "../types";
+import type {
+  QueuedTransaction,
+  TransactionRecipient,
+  UTXO,
+  UseTransactionQueueProps,
+  UseTransactionQueueReturn,
+} from "../types";
 import { logger } from "../utils/logger";
 import { fetchTransactionHex } from "../services/api";
 
 const MIN_FEE_RATE = 0.5; // 0.5 sats/kb minimum fee rate
-
-interface UseTransactionQueueProps {
-  privateKey: string;
-  sourceAddress: string;
-  fetchUtxos: (address: string) => Promise<UTXO[]>;
-}
-
-interface UseTransactionQueueReturn {
-  queuedTransactions: QueuedTransaction[];
-  addToQueue: (recipients: TransactionRecipient[]) => string;
-  processQueue: () => Promise<void>;
-  clearCompleted: () => void;
-}
 
 export function useTransactionQueue({
   privateKey,
@@ -29,7 +22,7 @@ export function useTransactionQueue({
   >([]);
 
   const addToQueue = useCallback(
-    (recipients: TransactionRecipient[]): string => {
+    (recipients: TransactionRecipient[]): QueuedTransaction => {
       const id = crypto.randomUUID();
       const newTransaction: QueuedTransaction = {
         id,
@@ -39,7 +32,7 @@ export function useTransactionQueue({
       };
 
       setQueuedTransactions((prev) => [...prev, newTransaction]);
-      return id;
+      return newTransaction;
     },
     []
   );
@@ -55,6 +48,11 @@ export function useTransactionQueue({
 
   const processTransaction = useCallback(
     async (transaction: QueuedTransaction): Promise<void> => {
+      if (!transaction) {
+        logger.error("No transaction provided to process");
+        return;
+      }
+
       try {
         updateTransaction(transaction.id, {
           status: "processing",
@@ -110,7 +108,7 @@ export function useTransactionQueue({
 
           // Calculate total needed (outputs + fee)
           const totalOutput = transaction.recipients.reduce(
-            (sum, r) => sum + r.amount,
+            (sum: number, r: TransactionRecipient) => sum + r.amount,
             0
           );
           const totalNeeded = totalOutput + currentFee;
@@ -125,7 +123,7 @@ export function useTransactionQueue({
 
         // Verify we have enough funds
         const totalOutput = transaction.recipients.reduce(
-          (sum, r) => sum + r.amount,
+          (sum: number, r: TransactionRecipient) => sum + r.amount,
           0
         );
 
@@ -177,6 +175,7 @@ export function useTransactionQueue({
           status: "failed",
           error: error instanceof Error ? error.message : "Unknown error",
         });
+        throw error; // Re-throw to handle in the component
       }
     },
     [fetchUtxos, privateKey, sourceAddress, updateTransaction]
@@ -188,7 +187,12 @@ export function useTransactionQueue({
     );
 
     for (const transaction of pendingTransactions) {
-      await processTransaction(transaction);
+      try {
+        await processTransaction(transaction);
+      } catch (error) {
+        // Stop processing queue on first error
+        break;
+      }
     }
   }, [queuedTransactions, processTransaction]);
 
@@ -202,6 +206,7 @@ export function useTransactionQueue({
     queuedTransactions,
     addToQueue,
     processQueue,
+    processTransaction,
     clearCompleted,
   };
 }

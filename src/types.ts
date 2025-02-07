@@ -17,3 +17,31 @@ export interface ClaimTransaction {
   timestamp: number;
   outputs: TransactionOutput[];
 }
+
+export interface TransactionRecipient {
+  address: string;
+  amount: number;
+}
+
+export interface QueuedTransaction {
+  id: string;
+  recipients: TransactionRecipient[];
+  status: "pending" | "processing" | "completed" | "failed";
+  progress: number;
+  error?: string;
+  txid?: string;
+}
+
+export interface UseTransactionQueueProps {
+  privateKey: string;
+  sourceAddress: string;
+  fetchUtxos: (address: string) => Promise<UTXO[]>;
+}
+
+export interface UseTransactionQueueReturn {
+  queuedTransactions: QueuedTransaction[];
+  addToQueue: (recipients: TransactionRecipient[]) => QueuedTransaction;
+  processQueue: () => Promise<void>;
+  processTransaction: (transaction: QueuedTransaction) => Promise<void>;
+  clearCompleted: () => void;
+}
