@@ -15,6 +15,8 @@ import { useTransactionQueue } from "./hooks/useTransactionQueue";
 import { useWalletBalance } from "./hooks/useWalletBalance";
 import { useWalletGeneration } from "./hooks/useWalletGeneration";
 import { fetchUtxos } from "./services/api";
+import { Leaderboard } from "./components/Leaderboard";
+import { useSquirtStats } from "./hooks/useSquirtStats";
 import "./App.css";
 
 function App() {
@@ -32,10 +34,10 @@ function App() {
   } = useWalletGeneration();
 
   const { balance } = useWalletBalance(wallet?.address || null);
+  const { stats } = useSquirtStats();
   const {
     queuedTransactions: transactions,
     addToQueue,
-
     processTransaction,
     clearCompleted,
   } = useTransactionQueue({
@@ -58,6 +60,7 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [displayBalance, setDisplayBalance] = useState(0);
   const previousBalance = useRef(0);
+  const [username, setUsername] = useState<string>("");
 
   const t = themes[theme];
 
@@ -193,7 +196,7 @@ function App() {
       // Create individual transaction for each recipient
       for (const recipient of recipients) {
         // Add single recipient to queue and process immediately
-        const newTransaction = addToQueue([recipient]);
+        const newTransaction = addToQueue([recipient], username);
         await processTransaction(newTransaction);
       }
 
@@ -216,10 +219,10 @@ function App() {
       {/* Theme accessibility background */}
       {theme === "accessibility" && (
         <div className="fixed inset-0 overflow-hidden pointer-events-none select-none">
-          <div className="absolute -right-20 top-1/4 text-[400px] opacity-[0.15] transform -rotate-12 text-blue-600">
+          <div className="absolute -right-20 top-1/4 text-[400px] opacity-[0.25] transform -rotate-12 text-blue-400">
             ♿
           </div>
-          <div className="absolute -left-20 bottom-1/4 text-[350px] opacity-[0.15] transform rotate-12 text-blue-600">
+          <div className="absolute -left-20 bottom-1/4 text-[350px] opacity-[0.25] transform rotate-12 text-blue-400">
             ♿
           </div>
         </div>
@@ -231,7 +234,7 @@ function App() {
         <div className="fixed top-2 sm:top-4 right-2 sm:right-4 z-10">
           <button
             onClick={() => setShowThemeSelector(!showThemeSelector)}
-            className={`p-2.5 sm:p-3.5 rounded-full ${t.button} transition-colors shadow-lg`}
+            className={`p-2.5 sm:p-3.5 rounded-full ${t.button} transition-colors shadow-lg cursor-pointer hover:cursor-pointer`}
           >
             <Palette className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
@@ -241,19 +244,19 @@ function App() {
             >
               <button
                 onClick={() => setTheme("aqua")}
-                className="w-full text-left px-4 py-2.5 rounded hover:bg-black/10 transition-colors"
+                className="w-full text-left px-4 py-2.5 rounded hover:bg-black/10 transition-colors cursor-default hover:cursor-pointer active:cursor-pointer"
               >
                 🌊 Aqua Theme
               </button>
               <button
                 onClick={() => setTheme("rainbow")}
-                className="w-full text-left px-4 py-2.5 rounded hover:bg-black/10 transition-colors"
+                className="w-full text-left px-4 py-2.5 rounded hover:bg-black/10 transition-colors cursor-default hover:cursor-pointer active:cursor-pointer"
               >
                 🌈 Rainbow Theme
               </button>
               <button
                 onClick={() => setTheme("accessibility")}
-                className="w-full text-left px-4 py-2.5 rounded hover:bg-black/10 transition-colors"
+                className="w-full text-left px-4 py-2.5 rounded hover:bg-black/10 transition-colors cursor-default hover:cursor-pointer active:cursor-pointer"
               >
                 ♿ Accessibility Theme
               </button>
@@ -286,19 +289,19 @@ function App() {
                   <p
                     className={`${t.textMuted} text-lg sm:text-xl leading-relaxed`}
                   >
-                    Spreading the wealth, one satoshi at a time.
+                    Squirting satoshis, one at a time.
                   </p>
                   <p
                     className={`${t.textMuted} text-lg sm:text-xl leading-relaxed`}
                   >
-                    Splashing Sats lets you distribute Bitcoin SV across the
+                    Squirting Sats lets you distribute Bitcoin SV across the
                     network, creating tiny treasure troves that might change
                     someone's life in the future.
                   </p>
                   <p
                     className={`${t.textMuted} text-lg sm:text-xl leading-relaxed`}
                   >
-                    Every satoshi we splash today could be tomorrow's
+                    Every satoshi we squirt today could be tomorrow's
                     life-changing discovery. Join us in our mission to spread
                     opportunity and value across the blockchain.
                   </p>
@@ -315,13 +318,18 @@ function App() {
                     <span
                       className={`${t.textMuted} font-medium text-base sm:text-lg`}
                     >
-                      Total Sats Splashed
+                      Total Squirts
                     </span>
                     <div className={`h-5 w-px ${t.border} opacity-30`}></div>
                     <span
-                      className={`text-2xl sm:text-3xl font-bold bg-gradient-to-r ${t.accent} text-transparent bg-clip-text`}
+                      className={`text-2xl sm:text-3xl font-bold ${
+                        theme === "accessibility"
+                          ? "text-blue-900"
+                          : `bg-gradient-to-r ${t.accent} text-transparent bg-clip-text`
+                      }`}
                     >
-                      {completedCount}
+                      {stats.find((s) => s.address === wallet.address)
+                        ?.totalSquirts || completedCount}
                     </span>
                   </div>
                 )}
@@ -340,7 +348,7 @@ function App() {
                   <button
                     onClick={handleCreateWallet}
                     disabled={isGenerating}
-                    className={`flex-1 py-4 rounded-xl ${t.button} transition-colors flex items-center justify-center gap-3 disabled:opacity-50`}
+                    className={`flex-1 py-4 rounded-xl ${t.button} transition-colors flex items-center justify-center gap-3 disabled:opacity-50 cursor-default hover:cursor-pointer active:cursor-pointer`}
                   >
                     {isGenerating ? (
                       <>
@@ -357,7 +365,7 @@ function App() {
                   <button
                     onClick={handleImportClick}
                     disabled={isGenerating}
-                    className={`flex-1 py-4 rounded-xl ${t.buttonAlt} transition-colors flex items-center justify-center gap-3 disabled:opacity-50`}
+                    className={`flex-1 py-4 rounded-xl ${t.buttonAlt} transition-colors flex items-center justify-center gap-3 disabled:opacity-50 cursor-default hover:cursor-pointer active:cursor-pointer`}
                   >
                     <Upload className="w-6 h-6" />
                     <span className="text-lg">Import Wallet</span>
@@ -379,16 +387,22 @@ function App() {
                 <div className={`${t.bg} p-6 rounded-xl`}>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 mb-4">
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl font-semibold text-gray-400">
+                      <span
+                        className={`text-2xl font-semibold ${
+                          theme === "accessibility"
+                            ? "text-blue-900"
+                            : "text-white"
+                        }`}
+                      >
                         Current Balance:
                       </span>
-                      <span className="text-2xl font-semibold transition-all duration-300">
+                      <span className="text-2xl font-semibold">
                         {displayBalance} satoshis
                       </span>
                     </div>
                     <button
                       onClick={exportWallet}
-                      className={`px-4 py-2 ${t.buttonAlt} rounded-xl transition-colors flex items-center gap-2`}
+                      className={`px-4 py-2 ${t.buttonAlt} rounded-xl transition-colors flex items-center gap-2 cursor-default hover:cursor-pointer active:cursor-pointer`}
                       title="Export Wallet"
                     >
                       <span>Export Wallet</span>
@@ -403,7 +417,7 @@ function App() {
                     </code>
                     <button
                       onClick={handleCopyWalletAddress}
-                      className={`p-3 ${t.buttonAlt} rounded-xl transition-colors flex-shrink-0`}
+                      className={`p-3 ${t.buttonAlt} rounded-xl transition-colors flex-shrink-0 cursor-default hover:cursor-pointer active:cursor-pointer`}
                     >
                       {copySuccess ? (
                         <Check className="w-5 h-5 text-green-500" />
@@ -411,6 +425,23 @@ function App() {
                         <Copy className="w-5 h-5" />
                       )}
                     </button>
+                  </div>
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium mb-2">
+                      Squirter Name (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="Enter your squirter name"
+                      className={`w-full px-4 py-2 ${
+                        theme === "accessibility"
+                          ? "bg-white border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-slate-900 placeholder-slate-400"
+                          : t.cardDark
+                      } rounded-xl focus:outline-none focus:ring-2 ${t.border}`}
+                      maxLength={20}
+                    />
                   </div>
                 </div>
               </div>
@@ -434,7 +465,11 @@ function App() {
                       Math.min(1000, Math.max(1, parseInt(e.target.value) || 1))
                     )
                   }
-                  className={`w-24 sm:w-28 ${t.bg} ${t.border} border rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-center text-lg`}
+                  className={`w-24 sm:w-28 ${
+                    theme === "accessibility"
+                      ? "bg-white border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-slate-900 placeholder-slate-400"
+                      : t.bg + " " + t.border
+                  } border rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-center text-lg transition-colors duration-200`}
                 />
               </div>
             </div>
@@ -442,7 +477,7 @@ function App() {
             {recipients.length > 0 && (
               <div className="space-y-3">
                 <div className={`text-base ${t.textMuted} mb-3`}>
-                  Ready to splash: {recipients.length} satoshis
+                  Ready to squirt: {recipients.length} satoshis
                 </div>
                 <div className="max-h-56 sm:max-h-72 overflow-y-auto space-y-3">
                   {recipients.map((recipient, index) => (
@@ -463,6 +498,9 @@ function App() {
             )}
           </div>
 
+          {/* Add Leaderboard component after Recipients section */}
+          {wallet && <Leaderboard theme={t} />}
+
           {/* Send button */}
           <button
             onClick={handleSendTransactions}
@@ -471,17 +509,18 @@ function App() {
               ${
                 !wallet || recipients.length === 0 || isProcessing
                   ? t.buttonAlt + " cursor-not-allowed"
-                  : t.button
+                  : t.button +
+                    " cursor-default hover:cursor-pointer active:cursor-pointer"
               } transition-all duration-300`}
           >
             {isProcessing ? (
               <>
                 <RefreshCw className="w-6 h-6 animate-spin" />
-                <span>Splashing...</span>
+                <span>Squirting...</span>
               </>
             ) : (
               <span>
-                Splash {recipientCount} Sat{recipientCount > 1 ? "s" : ""} 💦
+                Squirt {recipientCount} Sat{recipientCount > 1 ? "s" : ""} 💦
               </span>
             )}
           </button>
@@ -526,14 +565,14 @@ function App() {
               {completedCount > 0 && (
                 <button
                   onClick={clearCompleted}
-                  className={`px-3 py-1.5 ${t.buttonAlt} rounded-lg transition-colors text-sm`}
+                  className={`px-3 py-1.5 ${t.buttonAlt} rounded-lg transition-colors text-sm cursor-default hover:cursor-pointer active:cursor-pointer`}
                 >
                   Clear Done
                 </button>
               )}
               <button
                 onClick={() => setShowQueue(false)}
-                className={`p-2 ${t.buttonAlt} rounded-lg transition-colors`}
+                className={`p-2 ${t.buttonAlt} rounded-lg transition-colors cursor-default hover:cursor-pointer active:cursor-pointer`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -578,7 +617,7 @@ function App() {
       {transactions.length > 0 && !showQueue && (
         <button
           onClick={() => setShowQueue(true)}
-          className={`fixed bottom-6 right-4 sm:right-6 ${t.button} transition-colors p-3 sm:p-4 rounded-full shadow-xl flex items-center gap-3 z-50`}
+          className={`fixed bottom-6 right-4 sm:right-6 ${t.button} transition-colors p-3 sm:p-4 rounded-full shadow-xl flex items-center gap-3 z-50 cursor-default hover:cursor-pointer active:cursor-pointer`}
         >
           <MessageCircle className="w-5 h-5 sm:w-6 sm:h-6" />
           <span className="text-lg font-semibold">
@@ -629,36 +668,59 @@ const themes: Record<Theme, ThemeConfig> = {
     logo: "/images/aqua_and_accessiblity_theme_logo.png",
   },
   rainbow: {
+    // Base colors with enhanced vibrancy
     bg: "bg-gradient-to-br from-red-500 via-yellow-500 via-green-500 via-blue-500 to-violet-500",
-    card: "bg-white/10 backdrop-blur-md",
-    cardDark: "bg-white/20 backdrop-blur-lg",
-    accent:
-      "from-red-500 via-yellow-500 via-green-500 via-blue-500 to-violet-500",
+    card: "bg-white/15 backdrop-blur-md border border-white/30",
+    cardDark: "bg-black/25 backdrop-blur-lg border border-white/30",
+
+    // Text colors with better contrast
+    text: "text-white drop-shadow-sm",
+    textMuted: "text-white/90 drop-shadow-sm",
+
+    // Interactive elements with enhanced states
     button:
-      "bg-gradient-to-r from-red-500 via-purple-500 to-violet-500 hover:from-red-600 hover:via-purple-600 hover:to-violet-600",
-    buttonAlt: "bg-white/20 backdrop-blur-sm hover:bg-white/30",
-    text: "text-white",
-    textMuted: "text-white/70",
-    border: "border-white/20",
-    icon: "text-white",
-    progress:
-      "from-red-500 via-yellow-500 via-green-500 via-blue-500 to-violet-500",
-    glass: "bg-white/10 backdrop-blur-md",
+      "bg-gradient-to-r from-fuchsia-600 via-violet-600 to-indigo-600 hover:from-fuchsia-500 hover:via-violet-500 hover:to-indigo-500 active:from-fuchsia-700 active:via-violet-700 active:to-indigo-700 text-white shadow-lg hover:shadow-xl focus:ring-2 focus:ring-violet-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500 cursor-pointer transition-all duration-200 font-semibold",
+    buttonAlt:
+      "bg-white/20 backdrop-blur-sm hover:bg-white/30 active:bg-white/40 text-white border border-white/30 hover:border-white/40 shadow-lg hover:shadow-xl focus:ring-2 focus:ring-violet-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white/20 cursor-pointer transition-all duration-200 font-semibold",
+
+    // Accents and highlights with improved visibility
+    accent: "from-fuchsia-400 via-violet-400 to-indigo-400",
+    icon: "text-white hover:text-white/80 drop-shadow-sm cursor-pointer transition-colors duration-200",
+    progress: "from-fuchsia-500 via-violet-500 to-indigo-500",
+
+    // Containers and overlays
+    border: "border-white/30 hover:border-white/40",
+    glass: "bg-white/15 backdrop-blur-md border border-white/30 shadow-lg",
+
+    // Logo
     logo: "/images/rainbowtheme_logo.png",
   },
   accessibility: {
-    bg: "bg-blue-100",
-    card: "bg-white/90 backdrop-blur-md",
-    cardDark: "bg-blue-100/90 backdrop-blur-lg",
-    accent: "from-blue-700 to-blue-900",
-    button: "bg-blue-600 hover:bg-blue-700 text-white",
-    buttonAlt: "bg-blue-200/80 backdrop-blur-sm hover:bg-blue-300/80",
-    text: "text-blue-900",
-    textMuted: "text-blue-700",
-    border: "border-blue-200",
-    icon: "text-blue-600",
-    progress: "from-blue-500 to-blue-600",
-    glass: "bg-white/80 backdrop-blur-md",
+    // Base colors - keeping the blue/white theme
+    bg: "bg-blue-50",
+    card: "bg-white shadow-md",
+    cardDark: "bg-blue-50/90",
+
+    // Text colors - ensuring WCAG contrast ratios
+    text: "text-blue-950", // Dark blue for main text (11.5:1 contrast ratio)
+    textMuted: "text-blue-800", // Slightly lighter but still very readable (8:1 contrast ratio)
+
+    // Interactive elements with clear states
+    button:
+      "bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 disabled:bg-blue-200 disabled:text-blue-400 disabled:cursor-not-allowed cursor-pointer hover:cursor-pointer active:cursor-pointer transition-colors duration-200 font-semibold",
+    buttonAlt:
+      "bg-white hover:bg-blue-50 active:bg-blue-100 text-blue-800 border border-blue-200 hover:border-blue-300 focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 disabled:bg-blue-50 disabled:text-blue-300 disabled:border-blue-100 disabled:cursor-not-allowed cursor-pointer hover:cursor-pointer active:cursor-pointer transition-colors duration-200 font-semibold",
+
+    // Accents and highlights - maintaining brand while ensuring visibility
+    accent: "text-blue-900", // Darker blue for better contrast and readability
+    icon: "text-blue-700 hover:text-blue-800 cursor-pointer",
+    progress: "bg-blue-600", // Solid color for better visibility
+
+    // Borders and containers - subtle but visible
+    border: "border-blue-200 hover:border-blue-300 focus:border-blue-400",
+    glass: "bg-white shadow-md border border-blue-100",
+
+    // Logo
     logo: "/images/aqua_and_accessiblity_theme_logo.png",
   },
 } as const;

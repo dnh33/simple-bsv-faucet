@@ -1,33 +1,57 @@
 import { useState, useCallback } from "react";
-import { Transaction, P2PKH, SatoshisPerKilobyte, PrivateKey } from "@bsv/sdk";
+import {
+  Transaction,
+  P2PKH,
+  SatoshisPerKilobyte,
+  PrivateKey,
+  Script,
+} from "@bsv/sdk";
 import type {
   QueuedTransaction,
   TransactionRecipient,
   UseTransactionQueueProps,
   UseTransactionQueueReturn,
-} from "../types";
+  NewSquirt,
+} from "../types/index";
 import { logger } from "../utils/logger";
 import { fetchTransactionHex } from "../services/api";
+import { supabaseClient } from "../supabaseClient";
 
 const MIN_FEE_RATE = 0.5; // 0.5 sats/kb minimum fee rate
+const SQUIRT_PREFIX = "SQUIRTINGSATS:::v1";
+
+// Helper to create OP_RETURN script
+const createSquirtOpReturn = (username?: string) => {
+  const message = `${SQUIRT_PREFIX}:::${username || "anon"}:::squirt`;
+  // Convert message to hex manually
+  const hex = Array.from(new TextEncoder().encode(message))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return Script.fromASM(`OP_FALSE OP_RETURN ${hex}`);
+};
 
 export function useTransactionQueue({
   privateKey,
   sourceAddress,
   fetchUtxos,
+  onSquirtComplete,
 }: UseTransactionQueueProps): UseTransactionQueueReturn {
   const [queuedTransactions, setQueuedTransactions] = useState<
     QueuedTransaction[]
   >([]);
 
   const addToQueue = useCallback(
-    (recipients: TransactionRecipient[]): QueuedTransaction => {
+    (
+      recipients: TransactionRecipient[],
+      username?: string
+    ): QueuedTransaction => {
       const id = crypto.randomUUID();
       const newTransaction: QueuedTransaction = {
         id,
         recipients,
         status: "pending",
         progress: 0,
+        username,
       };
 
       setQueuedTransactions((prev) => [...prev, newTransaction]);
@@ -80,6 +104,12 @@ export function useTransactionQueue({
             satoshis: recipient.amount,
           });
         }
+
+        // Add OP_RETURN output
+        tx.addOutput({
+          lockingScript: createSquirtOpReturn(transaction.username),
+          satoshis: 0,
+        });
 
         updateTransaction(transaction.id, { progress: 40 });
 
@@ -150,34 +180,61 @@ export function useTransactionQueue({
         await tx.sign();
         const result = await tx.broadcast();
 
-        if (!result) {
-          throw new Error("Failed to broadcast transaction");
+        if (result) {
+          logger.info("Transaction broadcast success:", {
+            txid: result.txid || result.toString(),
+            fee: currentFee,
+            inputs: inputsAdded,
+            totalInput,
+            totalOutput,
+            change: changeAmount,
+          });
+
+          // Insert record into Supabase
+          logger.info("📝 Recording squirt in Supabase...", {
+            sender_address: sourceAddress,
+            username: transaction.username || "anon",
+            amount: transaction.recipients[0]?.amount || 0,
+            txid: result.txid || result.toString(),
+          });
+
+          const { error: dbError } = await supabaseClient
+            .from("squirts")
+            .insert({
+              sender_address: sourceAddress,
+              username: transaction.username || "anon",
+              amount: transaction.recipients[0]?.amount || 0,
+              txid: result.txid || result.toString(),
+            });
+
+          if (dbError) {
+            logger.error("❌ Failed to record squirt in Supabase:", dbError);
+          } else {
+            logger.info("✅ Successfully recorded squirt in Supabase");
+            // Notify parent component about the new squirt
+            onSquirtComplete?.({
+              sender_address: sourceAddress,
+              username: transaction.username || "anon",
+              amount: transaction.recipients[0]?.amount || 0,
+            });
+          }
+
+          updateTransaction(transaction.id, {
+            status: "completed",
+            progress: 100,
+            txid: result.txid || result.toString(),
+          });
         }
-
-        logger.info("Transaction broadcast success:", {
-          txid: result.txid || result.toString(),
-          fee: currentFee,
-          inputs: inputsAdded,
-          totalInput,
-          totalOutput,
-          change: changeAmount,
-        });
-
-        updateTransaction(transaction.id, {
-          status: "completed",
-          progress: 100,
-          txid: result.txid || result.toString(),
-        });
       } catch (error) {
         logger.error("Transaction processing error:", error);
         updateTransaction(transaction.id, {
           status: "failed",
           error: error instanceof Error ? error.message : "Unknown error",
         });
-        throw error; // Re-throw to handle in the component
+        throw error;
       }
     },
-    [fetchUtxos, privateKey, sourceAddress, updateTransaction]
+    [fetchUtxos, privateKey, sourceAddress, updateTransaction, onSquirtComplete]
   );
 
   const processQueue = useCallback(async () => {

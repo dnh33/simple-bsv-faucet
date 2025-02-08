@@ -39,4 +39,39 @@ export interface QueuedTransaction {
   progress: number;
   error?: string;
   txid?: string;
+  username?: string;
+}
+
+// Squirt-related interfaces
+export interface NewSquirt {
+  sender_address: string;
+  username: string;
+  amount: number;
+}
+
+export interface SquirtStats {
+  address: string;
+  username: string;
+  totalSquirts: number;
+  totalSats: number;
+  lastActive: number;
+}
+
+// Hook interfaces
+export interface UseTransactionQueueProps {
+  privateKey: string;
+  sourceAddress: string;
+  fetchUtxos: (address: string) => Promise<any[]>;
+  onSquirtComplete?: (squirt: NewSquirt) => void;
+}
+
+export interface UseTransactionQueueReturn {
+  queuedTransactions: QueuedTransaction[];
+  addToQueue: (
+    recipients: TransactionRecipient[],
+    username?: string
+  ) => QueuedTransaction;
+  processQueue: () => Promise<void>;
+  processTransaction: (transaction: QueuedTransaction) => Promise<void>;
+  clearCompleted: () => void;
 }

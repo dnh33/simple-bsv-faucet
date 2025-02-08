@@ -30,6 +30,7 @@ export interface QueuedTransaction {
   progress: number;
   error?: string;
   txid?: string;
+  username?: string;
 }
 
 export interface UseTransactionQueueProps {
@@ -40,7 +41,10 @@ export interface UseTransactionQueueProps {
 
 export interface UseTransactionQueueReturn {
   queuedTransactions: QueuedTransaction[];
-  addToQueue: (recipients: TransactionRecipient[]) => QueuedTransaction;
+  addToQueue: (
+    recipients: TransactionRecipient[],
+    username?: string
+  ) => QueuedTransaction;
   processQueue: () => Promise<void>;
   processTransaction: (transaction: QueuedTransaction) => Promise<void>;
   clearCompleted: () => void;
