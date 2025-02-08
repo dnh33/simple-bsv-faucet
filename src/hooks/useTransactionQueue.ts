@@ -11,7 +11,6 @@ import type {
   TransactionRecipient,
   UseTransactionQueueProps,
   UseTransactionQueueReturn,
-  NewSquirt,
 } from "../types/index";
 import { logger } from "../utils/logger";
 import { fetchTransactionHex } from "../services/api";
