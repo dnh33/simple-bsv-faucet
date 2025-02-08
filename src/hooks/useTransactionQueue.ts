@@ -18,16 +18,56 @@ import { supabaseClient } from "../supabaseClient";
 
 const MIN_FEE_RATE = 0.5; // 0.5 sats/kb minimum fee rate
 const SQUIRT_PREFIX = "SQUIRTINGSATS:::v1";
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 500; // 0.5 seconds between retries
+const BROADCAST_VERIFY_WAIT = 1500; // 1.5 seconds for verification
+const INTER_TX_DELAY = 500; // 0.5 seconds between transactions
 
-// Helper to create OP_RETURN script
-const createSquirtOpReturn = (username?: string) => {
-  const message = `${SQUIRT_PREFIX}:::${username || "anon"}:::squirt`;
-  // Convert message to hex manually
-  const hex = Array.from(new TextEncoder().encode(message))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return Script.fromASM(`OP_FALSE OP_RETURN ${hex}`);
+// Helper to create OP_RETURN script with support for longer messages
+const createSquirtOpReturn = (username?: string, isPromo: boolean = false) => {
+  // Split long messages into chunks if needed (max 100kb per chunk)
+  const MAX_CHUNK_SIZE = 99000; // Leave some room for prefix
+  const message = username || "anon";
+  const chunks = [];
+
+  // Format: SQUIRTINGSATS:::v1:::MESSAGE_TYPE:::CONTENT
+  // MESSAGE_TYPE is determined by isPromo flag
+  const messageType = isPromo ? "promo" : "squirt";
+  const fullMessage = `${SQUIRT_PREFIX}:::${messageType}:::${message}`;
+
+  // Convert to UTF-8 bytes
+  const messageBytes = new TextEncoder().encode(fullMessage);
+
+  // Split into chunks if necessary
+  for (let i = 0; i < messageBytes.length; i += MAX_CHUNK_SIZE) {
+    const chunk = messageBytes.slice(i, i + MAX_CHUNK_SIZE);
+    const hex = Array.from(chunk)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    chunks.push(hex);
+  }
+
+  // For now, we'll just use the first chunk to keep it simple
+  // In future, we could implement multi-output OP_RETURN for longer messages
+  return Script.fromASM(`OP_FALSE OP_RETURN ${chunks[0]}`);
 };
+
+// Helper to verify transaction broadcast
+const verifyBroadcast = async (txid: string): Promise<boolean> => {
+  try {
+    // Try to fetch the transaction from WhatsOnChain
+    const response = await fetch(
+      `https://api.whatsonchain.com/v1/bsv/main/tx/${txid}`
+    );
+    return response.ok;
+  } catch (error) {
+    logger.error("Failed to verify transaction:", error);
+    return false;
+  }
+};
+
+// Helper to wait between retries
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function useTransactionQueue({
   privateKey,
@@ -42,7 +82,8 @@ export function useTransactionQueue({
   const addToQueue = useCallback(
     (
       recipients: TransactionRecipient[],
-      username?: string
+      username?: string,
+      isPromo?: boolean
     ): QueuedTransaction => {
       const id = crypto.randomUUID();
       const newTransaction: QueuedTransaction = {
@@ -51,6 +92,7 @@ export function useTransactionQueue({
         status: "pending",
         progress: 0,
         username,
+        isPromo,
       };
 
       setQueuedTransactions((prev) => [...prev, newTransaction]);
@@ -75,142 +117,156 @@ export function useTransactionQueue({
         return;
       }
 
-      try {
-        updateTransaction(transaction.id, {
-          status: "processing",
-          progress: 10,
-        });
+      let retryCount = 0;
+      let success = false;
 
-        // Fetch UTXOs
-        const utxos = await fetchUtxos(sourceAddress);
-        if (utxos.length === 0) {
-          throw new Error("No confirmed UTXOs available");
-        }
+      while (retryCount < MAX_RETRIES && !success) {
+        try {
+          updateTransaction(transaction.id, {
+            status: "processing",
+            progress: 10,
+            error: undefined,
+          });
 
-        updateTransaction(transaction.id, { progress: 20 });
+          // Fetch fresh UTXOs each attempt
+          const utxos = await fetchUtxos(sourceAddress);
+          if (utxos.length === 0) {
+            throw new Error("No confirmed UTXOs available");
+          }
 
-        // Create transaction
-        const tx = new Transaction();
-        const privKey = PrivateKey.fromWif(privateKey);
+          updateTransaction(transaction.id, { progress: 20 });
 
-        // Sort UTXOs by value (largest first) to minimize inputs
-        const sortedUtxos = [...utxos].sort((a, b) => b.value - a.value);
+          // Create transaction
+          const tx = new Transaction();
+          const privKey = PrivateKey.fromWif(privateKey);
 
-        // Add outputs first to estimate size
-        for (const recipient of transaction.recipients) {
+          // Sort UTXOs by value (largest first) to minimize inputs
+          const sortedUtxos = [...utxos].sort((a, b) => b.value - a.value);
+
+          // Add outputs first to estimate size
+          for (const recipient of transaction.recipients) {
+            tx.addOutput({
+              lockingScript: new P2PKH().lock(recipient.address),
+              satoshis: recipient.amount,
+            });
+          }
+
+          // Add OP_RETURN output
           tx.addOutput({
-            lockingScript: new P2PKH().lock(recipient.address),
-            satoshis: recipient.amount,
-          });
-        }
-
-        // Add OP_RETURN output
-        tx.addOutput({
-          lockingScript: createSquirtOpReturn(transaction.username),
-          satoshis: 0,
-        });
-
-        updateTransaction(transaction.id, { progress: 40 });
-
-        // Calculate minimum fee
-        const feeModel = new SatoshisPerKilobyte(MIN_FEE_RATE);
-        let currentFee = 0;
-        let totalInput = 0;
-        let inputsAdded = 0;
-
-        // Add inputs one by one until we have enough to cover outputs + fee
-        for (const utxo of sortedUtxos) {
-          const hexString = await fetchTransactionHex(utxo.tx_hash);
-          const sourceTransaction = Transaction.fromHex(hexString);
-          tx.addInput({
-            sourceTransaction,
-            sourceOutputIndex: utxo.tx_pos,
-            unlockingScriptTemplate: new P2PKH().unlock(privKey),
+            lockingScript: createSquirtOpReturn(
+              transaction.username,
+              transaction.isPromo
+            ),
+            satoshis: 0,
           });
 
-          inputsAdded++;
-          totalInput += utxo.value;
+          updateTransaction(transaction.id, { progress: 40 });
 
-          // Recalculate fee with current tx size
-          currentFee = await feeModel.computeFee(tx);
+          // Calculate minimum fee with slightly higher rate on retries
+          const feeRate = MIN_FEE_RATE * (1 + retryCount * 0.5); // Increase fee rate with each retry
+          const feeModel = new SatoshisPerKilobyte(feeRate);
+          let currentFee = 0;
+          let totalInput = 0;
+          let inputsAdded = 0;
 
-          // Calculate total needed (outputs + fee)
+          // Add inputs one by one until we have enough to cover outputs + fee
+          for (const utxo of sortedUtxos) {
+            const hexString = await fetchTransactionHex(utxo.tx_hash);
+            const sourceTransaction = Transaction.fromHex(hexString);
+            tx.addInput({
+              sourceTransaction,
+              sourceOutputIndex: utxo.tx_pos,
+              unlockingScriptTemplate: new P2PKH().unlock(privKey),
+            });
+
+            inputsAdded++;
+            totalInput += utxo.value;
+
+            // Recalculate fee with current tx size
+            currentFee = await feeModel.computeFee(tx);
+
+            // Calculate total needed (outputs + fee)
+            const totalOutput = transaction.recipients.reduce(
+              (sum: number, r: TransactionRecipient) => sum + r.amount,
+              0
+            );
+            const totalNeeded = totalOutput + currentFee;
+
+            // If we have enough to cover outputs and fee, we can stop adding inputs
+            if (totalInput >= totalNeeded) {
+              break;
+            }
+          }
+
+          updateTransaction(transaction.id, { progress: 60 });
+
+          // Verify we have enough funds
           const totalOutput = transaction.recipients.reduce(
             (sum: number, r: TransactionRecipient) => sum + r.amount,
             0
           );
-          const totalNeeded = totalOutput + currentFee;
 
-          // If we have enough to cover outputs and fee, we can stop adding inputs
-          if (totalInput >= totalNeeded) {
-            break;
+          if (totalInput < totalOutput + currentFee) {
+            throw new Error(
+              `Insufficient funds: need ${
+                totalOutput + currentFee
+              } sats, have ${totalInput} sats`
+            );
           }
-        }
 
-        updateTransaction(transaction.id, { progress: 60 });
+          // Add change output if needed
+          const changeAmount = totalInput - totalOutput - currentFee;
+          if (changeAmount >= 1) {
+            tx.addOutput({
+              lockingScript: new P2PKH().lock(sourceAddress),
+              satoshis: changeAmount,
+            });
+          }
 
-        // Verify we have enough funds
-        const totalOutput = transaction.recipients.reduce(
-          (sum: number, r: TransactionRecipient) => sum + r.amount,
-          0
-        );
+          updateTransaction(transaction.id, { progress: 80 });
 
-        if (totalInput < totalOutput + currentFee) {
-          throw new Error(
-            `Insufficient funds: need ${
-              totalOutput + currentFee
-            } sats, have ${totalInput} sats`
-          );
-        }
+          // Sign and broadcast
+          await tx.sign();
+          const result = await tx.broadcast();
 
-        // Add change output if needed
-        const changeAmount = totalInput - totalOutput - currentFee;
-        if (changeAmount >= 1) {
-          // Only add change if it's at least 1 sat
-          tx.addOutput({
-            lockingScript: new P2PKH().lock(sourceAddress),
-            satoshis: changeAmount,
-          });
-        }
+          if (!result) {
+            throw new Error("Broadcast failed - no result returned");
+          }
 
-        updateTransaction(transaction.id, { progress: 80 });
+          const txid = result.txid || result.toString();
 
-        // Sign and broadcast
-        await tx.sign();
-        const result = await tx.broadcast();
+          // Wait briefly and verify the transaction was actually broadcast
+          await wait(BROADCAST_VERIFY_WAIT);
+          const isVerified = await verifyBroadcast(txid);
 
-        if (result) {
-          logger.info("Transaction broadcast success:", {
-            txid: result.txid || result.toString(),
+          if (!isVerified) {
+            throw new Error("Transaction verification failed");
+          }
+
+          logger.info("Transaction broadcast success and verified:", {
+            txid,
             fee: currentFee,
             inputs: inputsAdded,
             totalInput,
             totalOutput,
             change: changeAmount,
+            retryCount,
           });
 
-          // Insert record into Supabase
-          logger.info("📝 Recording squirt in Supabase...", {
-            sender_address: sourceAddress,
-            username: transaction.username || "anon",
-            amount: transaction.recipients[0]?.amount || 0,
-            txid: result.txid || result.toString(),
-          });
-
+          // Only insert into Supabase if we've verified the transaction
           const { error: dbError } = await supabaseClient
             .from("squirts")
             .insert({
               sender_address: sourceAddress,
               username: transaction.username || "anon",
               amount: transaction.recipients[0]?.amount || 0,
-              txid: result.txid || result.toString(),
+              txid,
             });
 
           if (dbError) {
             logger.error("❌ Failed to record squirt in Supabase:", dbError);
           } else {
             logger.info("✅ Successfully recorded squirt in Supabase");
-            // Notify parent component about the new squirt
             onSquirtComplete?.({
               sender_address: sourceAddress,
               username: transaction.username || "anon",
@@ -221,16 +277,34 @@ export function useTransactionQueue({
           updateTransaction(transaction.id, {
             status: "completed",
             progress: 100,
-            txid: result.txid || result.toString(),
+            txid,
           });
+
+          success = true;
+        } catch (error) {
+          logger.error(`Transaction attempt ${retryCount + 1} failed:`, error);
+
+          if (retryCount < MAX_RETRIES - 1) {
+            // If we have retries left, wait before trying again
+            await wait(RETRY_DELAY * (retryCount + 1));
+            retryCount++;
+
+            updateTransaction(transaction.id, {
+              status: "processing",
+              progress: 0,
+              error: `Retry ${retryCount}/${MAX_RETRIES}: ${
+                error instanceof Error ? error.message : "Unknown error"
+              }`,
+            });
+          } else {
+            // If we're out of retries, mark as failed
+            updateTransaction(transaction.id, {
+              status: "failed",
+              error: error instanceof Error ? error.message : "Unknown error",
+            });
+            throw error;
+          }
         }
-      } catch (error) {
-        logger.error("Transaction processing error:", error);
-        updateTransaction(transaction.id, {
-          status: "failed",
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-        throw error;
       }
     },
     [fetchUtxos, privateKey, sourceAddress, updateTransaction, onSquirtComplete]
@@ -241,12 +315,16 @@ export function useTransactionQueue({
       (tx) => tx.status === "pending"
     );
 
+    // Process transactions sequentially with delay between each
     for (const transaction of pendingTransactions) {
       try {
         await processTransaction(transaction);
+        // Add a small delay between transactions to allow UTXOs to propagate
+        await wait(INTER_TX_DELAY);
       } catch (error) {
-        // Stop processing queue on first error
-        break;
+        logger.error("Failed to process transaction:", error);
+        // Continue with next transaction instead of breaking
+        await wait(INTER_TX_DELAY * 2); // Wait longer after an error
       }
     }
   }, [queuedTransactions, processTransaction]);

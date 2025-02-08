@@ -61,6 +61,7 @@ function App() {
   const [displayBalance, setDisplayBalance] = useState(0);
   const previousBalance = useRef(0);
   const [username, setUsername] = useState<string>("");
+  const [isPromo, setIsPromo] = useState(false);
 
   const t = themes[theme];
 
@@ -196,8 +197,12 @@ function App() {
       // Create individual transaction for each recipient
       for (const recipient of recipients) {
         // Add single recipient to queue and process immediately
-        const newTransaction = addToQueue([recipient], username);
-        await processTransaction(newTransaction);
+        const tx = addToQueue(
+          [recipient],
+          username.trim() || undefined,
+          isPromo
+        );
+        await processTransaction(tx);
       }
 
       // Reset recipients after successful processing
@@ -427,20 +432,40 @@ function App() {
                     </button>
                   </div>
                   <div className="mt-4">
-                    <label className="block text-sm font-medium mb-2">
-                      Squirter Name (optional)
-                    </label>
+                    <div className="flex items-center gap-3 mb-2">
+                      <label className="text-sm font-medium">
+                        Squirter Name (optional)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="isPromo"
+                          checked={isPromo}
+                          onChange={(e) => setIsPromo(e.target.checked)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <label
+                          htmlFor="isPromo"
+                          className="text-sm font-medium"
+                        >
+                          Promotional Message
+                        </label>
+                      </div>
+                    </div>
                     <input
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      placeholder="Enter your squirter name"
+                      placeholder={
+                        isPromo
+                          ? "Enter your promotional message"
+                          : "Enter your squirter name"
+                      }
                       className={`w-full px-4 py-2 ${
                         theme === "accessibility"
                           ? "bg-white border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-slate-900 placeholder-slate-400"
                           : t.cardDark
                       } rounded-xl focus:outline-none focus:ring-2 ${t.border}`}
-                      maxLength={20}
                     />
                   </div>
                 </div>
@@ -578,37 +603,55 @@ function App() {
               </button>
             </div>
           </div>
-          <div className="max-h-72 sm:max-h-[32rem] overflow-y-auto">
-            {transactions.map((tx, index) => (
-              <div
-                key={index}
-                className={`p-4 border-b ${t.border} flex items-center justify-between`}
-              >
-                <div className="flex-1 mr-4">
-                  <div className="font-mono text-sm sm:text-base truncate">
-                    {tx.recipients[0]?.address || "No address"}
+          <div className="max-h-[280px] sm:max-h-[280px] overflow-y-auto">
+            {[...transactions]
+              .reverse() // Show newest first
+              .map((tx, index) => (
+                <div
+                  key={tx.id}
+                  className={`p-4 border-b ${
+                    t.border
+                  } flex items-center justify-between ${
+                    index >= 4 ? "animate-fade-in" : ""
+                  }`}
+                >
+                  <div className="flex-1 mr-4">
+                    <div className="font-mono text-sm sm:text-base truncate">
+                      {tx.status === "completed" && tx.txid ? (
+                        <a
+                          href={`https://whatsonchain.com/tx/${tx.txid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`${t.accent} hover:opacity-80 transition-opacity`}
+                          title="View on WhatsOnChain"
+                        >
+                          {tx.recipients[0]?.address || "No address"}
+                        </a>
+                      ) : (
+                        tx.recipients[0]?.address || "No address"
+                      )}
+                    </div>
+                    <div className={`text-sm sm:text-base ${t.textMuted}`}>
+                      {tx.recipients[0]?.amount ?? 0}{" "}
+                      {(tx.recipients[0]?.amount ?? 0) === 1 ? "sat" : "sats"}
+                    </div>
                   </div>
-                  <div className={`text-sm sm:text-base ${t.textMuted}`}>
-                    {tx.recipients[0]?.amount ?? 0}{" "}
-                    {(tx.recipients[0]?.amount ?? 0) === 1 ? "sat" : "sats"}
+                  <div className="flex items-center">
+                    {tx.status === "pending" && (
+                      <RefreshCw className="w-5 h-5 animate-spin text-yellow-500" />
+                    )}
+                    {tx.status === "processing" && (
+                      <RefreshCw className="w-5 h-5 animate-spin text-blue-500" />
+                    )}
+                    {tx.status === "completed" && (
+                      <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+                    )}
+                    {tx.status === "failed" && (
+                      <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center">
-                  {tx.status === "pending" && (
-                    <RefreshCw className="w-5 h-5 animate-spin text-yellow-500" />
-                  )}
-                  {tx.status === "processing" && (
-                    <RefreshCw className="w-5 h-5 animate-spin text-blue-500" />
-                  )}
-                  {tx.status === "completed" && (
-                    <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
-                  )}
-                  {tx.status === "failed" && (
-                    <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
-                  )}
-                </div>
-              </div>
-            ))}
+              ))}
           </div>
         </div>
       )}

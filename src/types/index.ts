@@ -40,6 +40,7 @@ export interface QueuedTransaction {
   error?: string;
   txid?: string;
   username?: string;
+  isPromo?: boolean;
 }
 
 // Squirt-related interfaces
@@ -69,7 +70,8 @@ export interface UseTransactionQueueReturn {
   queuedTransactions: QueuedTransaction[];
   addToQueue: (
     recipients: TransactionRecipient[],
-    username?: string
+    username?: string,
+    isPromo?: boolean
   ) => QueuedTransaction;
   processQueue: () => Promise<void>;
   processTransaction: (transaction: QueuedTransaction) => Promise<void>;
