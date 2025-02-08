@@ -499,7 +499,7 @@ function App() {
           </div>
 
           {/* Add Leaderboard component after Recipients section */}
-          {wallet && <Leaderboard theme={t} />}
+          <Leaderboard theme={t} />
 
           {/* Send button */}
           <button
