@@ -167,6 +167,13 @@ export function useTransactionQueue({
           let totalInput = 0;
           let inputsAdded = 0;
 
+          // Calculate total output amount including developer payment
+          const totalOutputAmount =
+            transaction.recipients.reduce(
+              (sum: number, r: TransactionRecipient) => sum + r.amount,
+              0
+            ) + 1; // Add 1 sat for developer payment
+
           // Add inputs one by one until we have enough to cover outputs + fee
           for (const utxo of sortedUtxos) {
             const hexString = await fetchTransactionHex(utxo.tx_hash);
@@ -183,18 +190,8 @@ export function useTransactionQueue({
             // Recalculate fee with current tx size
             currentFee = await feeModel.computeFee(tx);
 
-            // Calculate total needed (outputs + fee + developer payment)
-            const totalOutput =
-              transaction.recipients.reduce(
-                (sum: number, r: TransactionRecipient) => sum + r.amount,
-                0
-              ) + 1; // Add 1 sat for developer payment
-
-            // Calculate total needed (outputs + fee)
-            const totalNeeded = totalOutput + currentFee;
-
             // If we have enough to cover outputs and fee, we can stop adding inputs
-            if (totalInput >= totalNeeded) {
+            if (totalInput >= totalOutputAmount + currentFee) {
               break;
             }
           }
@@ -202,21 +199,16 @@ export function useTransactionQueue({
           updateTransaction(transaction.id, { progress: 60 });
 
           // Verify we have enough funds
-          const totalOutput = transaction.recipients.reduce(
-            (sum: number, r: TransactionRecipient) => sum + r.amount,
-            0
-          );
-
-          if (totalInput < totalOutput + currentFee) {
+          if (totalInput < totalOutputAmount + currentFee) {
             throw new Error(
               `Insufficient funds: need ${
-                totalOutput + currentFee
-              } sats (including developer payment), have ${totalInput} sats`
+                totalOutputAmount + currentFee
+              } sats (including developer payment and fees), have ${totalInput} sats`
             );
           }
 
           // Add change output if needed
-          const changeAmount = totalInput - totalOutput - currentFee;
+          const changeAmount = totalInput - totalOutputAmount - currentFee;
           if (changeAmount >= 1) {
             tx.addOutput({
               lockingScript: new P2PKH().lock(sourceAddress),
@@ -333,7 +325,7 @@ export function useTransactionQueue({
               fee: currentFee,
               inputs: inputsAdded,
               totalInput,
-              totalOutput,
+              totalOutput: totalOutputAmount,
               change: changeAmount,
               retryCount,
               developerPayment: DEVELOPER_WALLET,

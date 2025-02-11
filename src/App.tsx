@@ -39,7 +39,7 @@ function App() {
   const [showThemeSelector, setShowThemeSelector] = useState(false);
 
   // BSV SDK hooks
-  const { wallet, generateWallet, importWallet, exportWallet } =
+  const { wallet, generateWallet, importWallet, exportWallet, hasExported } =
     useWalletGeneration();
 
   const { balance } = useWalletBalance(wallet?.address || null);
@@ -273,6 +273,42 @@ function App() {
       setIsProcessing(false);
     }
   };
+
+  // Add warning effect for non-exported wallets
+  useEffect(() => {
+    if (wallet && !hasExported && !handcashAccount) {
+      toast.custom(
+        () => (
+          <div className="bg-[#1a1b36]/90 backdrop-blur-sm rounded-lg p-4 flex items-center gap-4 max-w-md shadow-lg border border-gray-800/50">
+            <div className="bg-yellow-500/20 p-2 rounded-full">
+              <MessageCircle className="w-6 h-6 text-yellow-500" />
+            </div>
+            <div className="flex-1">
+              <p className="font-medium text-yellow-500">
+                Don't forget to export your wallet!
+              </p>
+              <p className="text-sm text-gray-400 mt-1">
+                Your funds could be lost if you don't save your wallet file.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                exportWallet();
+                toast.dismiss();
+              }}
+              className="px-3 py-1.5 bg-yellow-500 text-white rounded-lg text-sm font-medium hover:bg-yellow-600 transition-colors"
+            >
+              Export Now
+            </button>
+          </div>
+        ),
+        {
+          duration: Infinity,
+          position: "bottom-center",
+        }
+      );
+    }
+  }, [wallet, hasExported, handcashAccount, exportWallet]);
 
   // Rest of the UI code from the sample, but using our SDK variables
   return (
