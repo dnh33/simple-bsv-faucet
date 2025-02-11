@@ -10,16 +10,19 @@ interface UseWalletGenerationReturn {
   importWallet: (wif: string) => boolean;
   exportWallet: () => void;
   hasExported: boolean;
+  error: string | null;
 }
 
 export function useWalletGeneration(): UseWalletGenerationReturn {
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [hasExported, setHasExported] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Load wallet from secure storage on mount
   useEffect(() => {
     const loadStoredWallet = async () => {
       try {
+        setError(null);
         const storedWallet = await secureStorage.get("bsv_wallet");
         if (storedWallet) {
           const walletData = JSON.parse(storedWallet);
@@ -29,6 +32,9 @@ export function useWalletGeneration(): UseWalletGenerationReturn {
           setHasExported(wasExported === "true");
         }
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        setError(errorMessage);
         logger.error("Failed to load stored wallet:", error);
       }
     };
@@ -54,6 +60,7 @@ export function useWalletGeneration(): UseWalletGenerationReturn {
 
   const generateWallet = useCallback(async () => {
     try {
+      setError(null);
       const privateKey = PrivateKey.fromRandom();
       const address = privateKey.toAddress().toString();
       const publicKey = privateKey.toPublicKey().toString();
@@ -75,6 +82,9 @@ export function useWalletGeneration(): UseWalletGenerationReturn {
 
       logger.info("✅ New wallet generated and stored securely");
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      setError(errorMessage);
       logger.error("Failed to generate wallet:", error);
       throw error;
     }
@@ -82,6 +92,7 @@ export function useWalletGeneration(): UseWalletGenerationReturn {
 
   const importWallet = useCallback((wif: string): boolean => {
     try {
+      setError(null);
       const privateKey = PrivateKey.fromWif(wif);
       const address = privateKey.toAddress().toString();
       const publicKey = privateKey.toPublicKey().toString();
@@ -103,6 +114,9 @@ export function useWalletGeneration(): UseWalletGenerationReturn {
       logger.info("✅ Wallet imported and stored securely");
       return true;
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      setError(errorMessage);
       logger.error("Failed to import wallet:", error);
       return false;
     }
@@ -112,6 +126,7 @@ export function useWalletGeneration(): UseWalletGenerationReturn {
     if (!wallet) return;
 
     try {
+      setError(null);
       const blob = new Blob([JSON.stringify(wallet, null, 2)], {
         type: "application/json",
       });
@@ -130,6 +145,9 @@ export function useWalletGeneration(): UseWalletGenerationReturn {
 
       logger.info("✅ Wallet exported successfully");
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      setError(errorMessage);
       logger.error("Failed to export wallet:", error);
     }
   }, [wallet]);
@@ -140,5 +158,6 @@ export function useWalletGeneration(): UseWalletGenerationReturn {
     importWallet,
     exportWallet,
     hasExported,
+    error,
   };
 }

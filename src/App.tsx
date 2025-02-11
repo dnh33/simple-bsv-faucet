@@ -24,7 +24,7 @@ import { Toaster, toast } from "react-hot-toast";
 import { handcashStore } from "./stores/handcash";
 import { logger } from "./utils/logger";
 import { useStore } from "@nanostores/react";
-import type { Theme } from "./types/theme";
+import type { Theme, ThemeConfig } from "./types/theme";
 
 function App() {
   const { connect: connectHandcash, disconnect: disconnectHandcash } =
@@ -776,9 +776,9 @@ function App() {
 
           {/* Recipients section */}
           <div
-            className={`${t.card} rounded-2xl p-6 sm:p-8 ${t.border} border shadow-xl`}
+            className={`${t.card} rounded-2xl p-6 sm:p-8 ${t.border} border shadow-xl space-y-6`}
           >
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between">
               <h2 className="text-xl sm:text-2xl font-semibold">Recipients</h2>
               <div className="flex items-center gap-4">
                 <input
@@ -823,34 +823,36 @@ function App() {
                 </div>
               </div>
             )}
+
+            {/* Send button */}
+            <button
+              onClick={handleSendTransactions}
+              disabled={
+                !activeWallet || recipients.length === 0 || isProcessing
+              }
+              className={`w-full py-4 sm:py-5 rounded-2xl text-lg font-semibold flex items-center justify-center space-x-3 shadow-xl
+                ${
+                  !activeWallet || recipients.length === 0 || isProcessing
+                    ? t.buttonAlt + " cursor-not-allowed"
+                    : t.button +
+                      " cursor-default hover:cursor-pointer active:cursor-pointer"
+                } transition-all duration-300`}
+            >
+              {isProcessing ? (
+                <>
+                  <RefreshCw className="w-6 h-6 animate-spin" />
+                  <span>Squirting...</span>
+                </>
+              ) : (
+                <span>
+                  Squirt {recipientCount} Sat{recipientCount > 1 ? "s" : ""} 💦
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Add Leaderboard component after Recipients section */}
           <Leaderboard theme={t} />
-
-          {/* Send button */}
-          <button
-            onClick={handleSendTransactions}
-            disabled={!activeWallet || recipients.length === 0 || isProcessing}
-            className={`w-full py-4 sm:py-5 rounded-2xl text-lg font-semibold flex items-center justify-center space-x-3 shadow-xl mb-10
-              ${
-                !activeWallet || recipients.length === 0 || isProcessing
-                  ? t.buttonAlt + " cursor-not-allowed"
-                  : t.button +
-                    " cursor-default hover:cursor-pointer active:cursor-pointer"
-              } transition-all duration-300`}
-          >
-            {isProcessing ? (
-              <>
-                <RefreshCw className="w-6 h-6 animate-spin" />
-                <span>Squirting...</span>
-              </>
-            ) : (
-              <span>
-                Squirt {recipientCount} Sat{recipientCount > 1 ? "s" : ""} 💦
-              </span>
-            )}
-          </button>
         </div>
       </div>
 
@@ -941,6 +943,7 @@ function App() {
                     ${index >= 4 ? "animate-fade-in" : ""}
                     ${tx.status === "completed" ? "animate-complete" : ""}
                     ${tx.status === "failed" ? "animate-fail" : ""}
+                    ${tx.status === "processing" ? "bg-blue-500/10" : ""}
                     transform transition-all duration-500 ease-in-out
                     ${
                       tx.status === "completed" || tx.status === "failed"
@@ -951,11 +954,15 @@ function App() {
                   `}
                 >
                   {/* Status indicator overlay */}
-                  {(tx.status === "completed" || tx.status === "failed") && (
+                  {(tx.status === "completed" ||
+                    tx.status === "failed" ||
+                    tx.status === "processing") && (
                     <div
                       className={`absolute inset-0 ${
                         tx.status === "completed"
                           ? "bg-green-500"
+                          : tx.status === "processing"
+                          ? "bg-blue-500"
                           : "bg-red-500"
                       } opacity-0 animate-status-flash pointer-events-none`}
                     />
@@ -977,7 +984,13 @@ function App() {
                         tx.recipients[0]?.address || "No address"
                       )}
                     </div>
-                    <div className={`text-sm sm:text-base ${t.textMuted}`}>
+                    <div
+                      className={`text-sm sm:text-base ${
+                        tx.status === "processing"
+                          ? "text-blue-400"
+                          : t.textMuted
+                      }`}
+                    >
                       {tx.recipients[0]?.amount ?? 0}{" "}
                       {(tx.recipients[0]?.amount ?? 0) === 1 ? "sat" : "sats"}
                     </div>
@@ -1041,22 +1054,6 @@ function App() {
 export default App;
 
 // Theme definitions
-export interface ThemeConfig {
-  bg: string;
-  card: string;
-  cardDark: string;
-  accent: string;
-  button: string;
-  buttonAlt: string;
-  text: string;
-  textMuted: string;
-  border: string;
-  icon: string;
-  progress: string;
-  glass: string;
-  logo: string;
-}
-
 const themes: Record<Theme, ThemeConfig> = {
   aqua: {
     bg: "bg-[#0a0b1e]",
