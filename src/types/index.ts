@@ -62,7 +62,7 @@ export interface SquirtStats {
 export interface UseTransactionQueueProps {
   privateKey: string;
   sourceAddress: string;
-  fetchUtxos: (address: string) => Promise<any[]>;
+  fetchUtxos: (address: string) => Promise<UTXO[]>;
   onSquirtComplete?: (squirt: NewSquirt) => void;
 }
 
@@ -76,4 +76,13 @@ export interface UseTransactionQueueReturn {
   processQueue: () => Promise<void>;
   processTransaction: (transaction: QueuedTransaction) => Promise<void>;
   clearCompleted: () => void;
+}
+
+export interface HandCashAccount {
+  id: string;
+  publicKey: string;
+  paymail: string;
+  displayName: string;
+  avatarUrl: string;
+  balance?: number;
 }

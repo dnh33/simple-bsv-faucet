@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { fetchUtxos } from "../services/api";
 import { UTXO } from "../types";
 import { logger } from "../utils/logger";
@@ -29,7 +29,7 @@ export function useWalletBalance(
   const currentIntervalRef = useRef(FAST_POLL_INTERVAL);
   const intervalIdRef = useRef<NodeJS.Timeout>();
 
-  const refreshBalance = async () => {
+  const refreshBalance = useCallback(async () => {
     if (!address) {
       setBalance(0);
       setUtxos([]);
@@ -91,13 +91,13 @@ export function useWalletBalance(
         totalBalance,
         `(Polling interval: ${currentIntervalRef.current}ms)`
       );
-    } catch (err) {
+    } catch (err: unknown) {
       setError("Failed to fetch balance");
       logger.error("Balance fetch error:", err);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [address]); // Only depend on address changes
 
   useEffect(() => {
     // Reset state when address changes
@@ -121,7 +121,7 @@ export function useWalletBalance(
         clearInterval(intervalIdRef.current);
       }
     };
-  }, [address]); // Only depend on address changes
+  }, [address, refreshBalance]); // Include refreshBalance in dependencies
 
   return {
     balance,

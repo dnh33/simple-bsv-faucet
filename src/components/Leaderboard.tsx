@@ -1,8 +1,9 @@
 import { useSquirtStats } from "../hooks/useSquirtStats";
 import { RefreshCw } from "lucide-react";
+import type { ThemeConfig } from "../App";
 
 interface LeaderboardProps {
-  theme: any; // We'll use the same theme object from App.tsx
+  theme: ThemeConfig;
 }
 
 export function Leaderboard({ theme }: LeaderboardProps) {

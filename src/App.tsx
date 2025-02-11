@@ -17,7 +17,12 @@ import { useWalletGeneration } from "./hooks/useWalletGeneration";
 import { fetchUtxos } from "./services/api";
 import { Leaderboard } from "./components/Leaderboard";
 import { useSquirtStats } from "./hooks/useSquirtStats";
+import { useHandCashConnect } from "./hooks/useHandCashConnect";
+import { useHandCashWallet } from "./hooks/useHandCashWallet";
 import "./App.css";
+import { Toaster, toast } from "react-hot-toast";
+import { handcashStore } from "./stores/handcash";
+import { logger } from "./utils/logger";
 
 function App() {
   // Theme state
@@ -25,13 +30,8 @@ function App() {
   const [showThemeSelector, setShowThemeSelector] = useState(false);
 
   // BSV SDK hooks
-  const {
-    wallet,
-    generateWallet,
-    importWallet,
-    exportWallet,
-    error: walletError,
-  } = useWalletGeneration();
+  const { wallet, generateWallet, importWallet, exportWallet } =
+    useWalletGeneration();
 
   const { balance } = useWalletBalance(wallet?.address || null);
   const { stats } = useSquirtStats();
@@ -46,6 +46,18 @@ function App() {
     fetchUtxos: fetchUtxos,
   });
 
+  // HandCash Connect hooks
+  const {
+    connect: connectHandcash,
+    isConnecting: isConnectingHandcash,
+    account: handcashAccount,
+    disconnect: disconnectHandcash,
+  } = useHandCashConnect();
+
+  // HandCash Wallet hooks
+  const { wallet: handcashWallet, sendTransaction: sendHandcashTransaction } =
+    useHandCashWallet();
+
   // UI state
   const [recipientCount, setRecipientCount] = useState<number>(1);
   const [recipients, setRecipients] = useState<
@@ -53,8 +65,6 @@ function App() {
   >([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [_showImportInput, setShowImportInput] = useState(false);
-  const [_importKey, setImportKey] = useState("");
   const [showQueue, setShowQueue] = useState(true);
   const [copySuccess, setCopySuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -106,37 +116,41 @@ function App() {
     try {
       await navigator.clipboard.writeText(wallet.address);
       setCopySuccess(true);
+      toast.success("Address copied to clipboard");
       setTimeout(() => setCopySuccess(false), 2000);
     } catch (error) {
+      toast.error("Failed to copy address");
       console.error("Failed to copy address:", error);
     }
   };
 
   useEffect(() => {
-    handleGenerateRecipients();
-  }, [recipientCount]);
+    const generateRecipients = () => {
+      try {
+        const newRecipients = Array.from({ length: recipientCount }, () => {
+          const recipientKey = PrivateKey.fromRandom();
+          const recipientAddress = recipientKey.toAddress().toString();
+          return {
+            address: recipientAddress,
+            amount: 1, // 1 sat per recipient
+          };
+        });
+        setRecipients(newRecipients);
+      } catch (error) {
+        console.error("Failed to generate recipient addresses:", error);
+      }
+    };
 
-  const handleGenerateRecipients = () => {
-    try {
-      const newRecipients = Array.from({ length: recipientCount }, () => {
-        const recipientKey = PrivateKey.fromRandom();
-        const recipientAddress = recipientKey.toAddress().toString();
-        return {
-          address: recipientAddress,
-          amount: 1, // 1 sat per recipient
-        };
-      });
-      setRecipients(newRecipients);
-    } catch (error) {
-      console.error("Failed to generate recipient addresses:", error);
-    }
-  };
+    generateRecipients();
+  }, [recipientCount]);
 
   const handleCreateWallet = async () => {
     setIsGenerating(true);
     try {
       await generateWallet();
+      toast.success("New wallet generated successfully");
     } catch (error) {
+      toast.error("Failed to generate wallet");
       console.error("Failed to generate wallet:", error);
     } finally {
       setIsGenerating(false);
@@ -164,10 +178,10 @@ function App() {
 
       const success = importWallet(walletData.wif);
       if (success) {
-        setShowImportInput(false);
-        setImportKey("");
+        toast.success("Wallet imported successfully");
       }
     } catch (error) {
+      toast.error("Failed to import wallet");
       console.error("Failed to import wallet:", error);
     } finally {
       setIsGenerating(false);
@@ -177,8 +191,14 @@ function App() {
     }
   };
 
+  // Use HandCash wallet if available, otherwise use BSV SDK wallet
+  const activeWallet = handcashWallet || wallet;
+  const activeBalance = handcashWallet
+    ? handcashAccount?.balance || 0
+    : balance;
+
   const handleSendTransactions = async () => {
-    if (!wallet || recipients.length === 0) return;
+    if (!activeWallet || recipients.length === 0) return;
 
     // Prevent double-clicking
     if (isProcessing) return;
@@ -186,41 +206,95 @@ function App() {
     // Calculate total amount needed (including estimated fees)
     const totalAmount = recipients.reduce((sum, r) => sum + r.amount, 0);
 
-    // Check if we have enough balance (rough estimate, actual fee will be calculated per tx)
-    if (balance < totalAmount) {
-      console.error("Insufficient balance for transactions");
+    // Check if we have enough balance
+    if (activeBalance < totalAmount) {
+      toast.error("Insufficient balance for transactions");
       return;
     }
 
     setIsProcessing(true);
+    const toastId = toast.loading("Processing transactions...");
+
     try {
-      // Create individual transaction for each recipient
-      for (const recipient of recipients) {
-        // Add single recipient to queue and process immediately
+      if (handcashWallet) {
+        // Add HandCash transaction to queue for UI
         const tx = addToQueue(
-          [recipient],
-          username.trim() || undefined,
+          recipients,
+          username.trim() || handcashAccount?.displayName,
           isPromo
         );
-        await processTransaction(tx);
+
+        // Send through HandCash
+        const txid = await sendHandcashTransaction(recipients);
+
+        // Update transaction status
+        tx.status = "completed";
+        tx.txid = txid;
+      } else {
+        // Create individual transaction for each recipient using BSV SDK
+        for (const recipient of recipients) {
+          const tx = addToQueue(
+            [recipient],
+            username.trim() || undefined,
+            isPromo
+          );
+          await processTransaction(tx);
+        }
       }
 
-      // Reset recipients after successful processing
-      setRecipients([]);
-      setRecipientCount(1);
-      handleGenerateRecipients(); // Generate new recipients for next round
+      // Generate new recipient immediately
+      const newRecipientKey = PrivateKey.fromRandom();
+      const newRecipientAddress = newRecipientKey.toAddress().toString();
+      setRecipients([
+        {
+          address: newRecipientAddress,
+          amount: 1,
+        },
+      ]);
+
+      toast.success("Transaction completed successfully", {
+        id: toastId,
+      });
     } catch (error) {
-      console.error("Failed to process transactions:", error);
+      toast.error("Failed to process transaction", {
+        id: toastId,
+      });
+      console.error("Failed to process transaction:", error);
     } finally {
       setIsProcessing(false);
     }
   };
+
+  // Monitor HandCash store changes
+  useEffect(() => {
+    const unsubscribe = handcashStore.subscribe((state) => {
+      logger.debug("HandCash store update", {
+        hasAccount: !!state.account,
+        connectionStatus: state.connectionStatus,
+        hasAuthToken: !!state.authToken,
+      });
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Rest of the UI code from the sample, but using our SDK variables
   return (
     <div
       className={`min-h-screen flex flex-col ${t.bg} ${t.text} p-2 sm:p-4 transition-colors duration-300 relative overflow-hidden`}
     >
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          className: "dark:bg-gray-800 dark:text-white",
+          duration: 3000,
+          success: {
+            iconTheme: {
+              primary: "#1CF567",
+              secondary: "white",
+            },
+          },
+        }}
+      />
       {/* Theme accessibility background */}
       {theme === "accessibility" && (
         <div className="fixed inset-0 overflow-hidden pointer-events-none select-none">
@@ -312,7 +386,7 @@ function App() {
                   </p>
                 </div>
 
-                {wallet && (
+                {activeWallet && (
                   <div
                     className={`inline-flex items-center gap-4 ${
                       t.cardDark
@@ -333,7 +407,7 @@ function App() {
                           : `bg-gradient-to-r ${t.accent} text-transparent bg-clip-text`
                       }`}
                     >
-                      {stats.find((s) => s.address === wallet.address)
+                      {stats.find((s) => s.address === activeWallet.address)
                         ?.totalSquirts || completedCount}
                     </span>
                   </div>
@@ -347,8 +421,9 @@ function App() {
             className={`${t.card} rounded-2xl p-6 sm:p-8 ${t.border} border shadow-xl`}
           >
             <h2 className="text-xl sm:text-2xl font-semibold mb-6">Wallet</h2>
-            {!wallet ? (
-              <div className="space-y-6">
+            <div className="space-y-6">
+              {/* Wallet Generation/Import Buttons */}
+              {!activeWallet && (
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-6">
                   <button
                     onClick={handleCreateWallet}
@@ -375,102 +450,178 @@ function App() {
                     <Upload className="w-6 h-6" />
                     <span className="text-lg">Import Wallet</span>
                   </button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileImport}
-                    accept=".txt"
-                    style={{ display: "none" }}
-                  />
                 </div>
-                {walletError && (
-                  <p className="text-red-500 text-base mt-3">{walletError}</p>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <div className={`${t.bg} p-6 rounded-xl`}>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 mb-4">
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`text-2xl font-semibold ${
-                          theme === "accessibility"
-                            ? "text-blue-900"
-                            : "text-white"
-                        }`}
-                      >
-                        Current Balance:
-                      </span>
-                      <span className="text-2xl font-semibold">
-                        {displayBalance} satoshis
-                      </span>
-                    </div>
-                    <button
-                      onClick={exportWallet}
-                      className={`px-4 py-2 ${t.buttonAlt} rounded-xl transition-colors flex items-center gap-2 cursor-default hover:cursor-pointer active:cursor-pointer`}
-                      title="Export Wallet"
-                    >
-                      <span>Export Wallet</span>
-                      <Download className="w-5 h-5" />
-                    </button>
-                  </div>
-                  <div
-                    className={`flex items-center justify-between ${t.cardDark} p-4 rounded-xl`}
-                  >
-                    <code className="text-sm sm:text-base font-mono truncate mr-3">
-                      {wallet.address}
-                    </code>
-                    <button
-                      onClick={handleCopyWalletAddress}
-                      className={`p-3 ${t.buttonAlt} rounded-xl transition-colors flex-shrink-0 cursor-default hover:cursor-pointer active:cursor-pointer`}
-                    >
-                      {copySuccess ? (
-                        <Check className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <Copy className="w-5 h-5" />
-                      )}
-                    </button>
-                  </div>
-                  <div className="mt-4">
-                    <div className="flex items-center gap-3 mb-2">
-                      <label className="text-sm font-medium">
-                        Squirter Name (optional)
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id="isPromo"
-                          checked={isPromo}
-                          onChange={(e) => setIsPromo(e.target.checked)}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <label
-                          htmlFor="isPromo"
-                          className="text-sm font-medium"
+              )}
+
+              {/* HandCash Connect Button */}
+              {!handcashAccount && !activeWallet && (
+                <button
+                  onClick={connectHandcash}
+                  disabled={isGenerating || isConnectingHandcash}
+                  className={`w-full py-4 rounded-xl bg-gradient-to-r from-[#0a3a1c] via-[#0d4423] to-[#0a3a1c] hover:from-[#0d4423] hover:via-[#0f4d28] hover:to-[#0d4423] text-white font-medium transition-all flex items-center justify-center gap-3 disabled:opacity-50 cursor-default hover:cursor-pointer active:cursor-pointer shadow-lg hover:shadow-xl hover:scale-[1.02] border border-[#1CF567]/20`}
+                >
+                  {isConnectingHandcash ? (
+                    <>
+                      <RefreshCw className="w-6 h-6 animate-spin" />
+                      <span className="text-lg">Connecting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <img
+                        src="/images/handcash-icon.svg"
+                        alt=""
+                        className="w-6 h-6 opacity-90"
+                      />
+                      <span className="text-lg">Connect HandCash</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Connected Wallets Display */}
+              {(activeWallet || handcashAccount) && (
+                <div className="space-y-6">
+                  {/* BSV SDK Wallet */}
+                  {activeWallet && (
+                    <div className={`${t.bg} p-6 rounded-xl`}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 mb-4">
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`text-2xl font-semibold ${
+                              theme === "accessibility"
+                                ? "text-blue-900"
+                                : "text-white"
+                            }`}
+                          >
+                            Current Balance:
+                          </span>
+                          <span className="text-2xl font-semibold">
+                            {displayBalance} satoshis
+                          </span>
+                        </div>
+                        <button
+                          onClick={exportWallet}
+                          className={`px-4 py-2 ${t.buttonAlt} rounded-xl transition-colors flex items-center gap-2 cursor-default hover:cursor-pointer active:cursor-pointer`}
+                          title="Export Wallet"
                         >
-                          Promotional Message
-                        </label>
+                          <span>Export Wallet</span>
+                          <Download className="w-5 h-5" />
+                        </button>
+                      </div>
+                      <div
+                        className={`flex items-center justify-between ${t.cardDark} p-4 rounded-xl`}
+                      >
+                        <code className="text-sm sm:text-base font-mono truncate mr-3">
+                          {activeWallet.address}
+                        </code>
+                        <button
+                          onClick={handleCopyWalletAddress}
+                          className={`p-3 ${t.buttonAlt} rounded-xl transition-colors flex-shrink-0 cursor-default hover:cursor-pointer active:cursor-pointer`}
+                        >
+                          {copySuccess ? (
+                            <Check className="w-5 h-5 text-green-500" />
+                          ) : (
+                            <Copy className="w-5 h-5" />
+                          )}
+                        </button>
                       </div>
                     </div>
-                    <input
-                      type="text"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      placeholder={
-                        isPromo
-                          ? "Enter your promotional message"
-                          : "Enter your squirter name"
-                      }
-                      className={`w-full px-4 py-2 ${
-                        theme === "accessibility"
-                          ? "bg-white border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-slate-900 placeholder-slate-400"
-                          : t.cardDark
-                      } rounded-xl focus:outline-none focus:ring-2 ${t.border}`}
-                    />
-                  </div>
+                  )}
+
+                  {/* HandCash Account */}
+                  {handcashAccount && (
+                    <div className={`${t.bg} p-6 rounded-xl mt-4`}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 mb-4">
+                        <div className="flex items-center gap-4">
+                          <img
+                            src={handcashAccount.avatarUrl}
+                            alt={handcashAccount.displayName}
+                            className="w-10 h-10 rounded-full"
+                          />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-2xl font-semibold ${
+                                  theme === "accessibility"
+                                    ? "text-blue-900"
+                                    : "text-white"
+                                }`}
+                              >
+                                {handcashAccount.displayName}
+                              </span>
+                              <img
+                                src="/images/handcash-icon.svg"
+                                alt="HandCash"
+                                className="w-5 h-5 opacity-90"
+                              />
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <span
+                                className={`${t.textMuted} text-sm font-mono`}
+                              >
+                                {handcashAccount.paymail}
+                              </span>
+                              <span className={`${t.textMuted} text-sm`}>
+                                Balance:{" "}
+                                {handcashAccount.balance?.toLocaleString() ||
+                                  "0"}{" "}
+                                satoshis
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={disconnectHandcash}
+                          className={`px-4 py-2 ${t.buttonAlt} rounded-xl transition-colors flex items-center gap-2 cursor-default hover:cursor-pointer active:cursor-pointer`}
+                          title="Disconnect HandCash"
+                        >
+                          <span>Disconnect</span>
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              )}
+
+              {/* Username Input */}
+              {(activeWallet || handcashAccount) && (
+                <div className="mt-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <label className="text-sm font-medium">
+                      Squirter Name (optional)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="isPromo"
+                        checked={isPromo}
+                        onChange={(e) => setIsPromo(e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <label htmlFor="isPromo" className="text-sm font-medium">
+                        Promotional Message
+                      </label>
+                    </div>
+                  </div>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder={
+                      isPromo
+                        ? "Enter your promotional message"
+                        : "Enter your squirter name"
+                    }
+                    className={`w-full px-4 py-2 ${
+                      theme === "accessibility"
+                        ? "bg-white border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-slate-900 placeholder-slate-400"
+                        : t.cardDark
+                    } rounded-xl focus:outline-none focus:ring-2 ${t.border}`}
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Recipients section */}
@@ -490,6 +641,7 @@ function App() {
                       Math.min(1000, Math.max(1, parseInt(e.target.value) || 1))
                     )
                   }
+                  disabled={!activeWallet}
                   className={`w-24 sm:w-28 ${
                     theme === "accessibility"
                       ? "bg-white border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-slate-900 placeholder-slate-400"
@@ -529,10 +681,10 @@ function App() {
           {/* Send button */}
           <button
             onClick={handleSendTransactions}
-            disabled={!wallet || recipients.length === 0 || isProcessing}
+            disabled={!activeWallet || recipients.length === 0 || isProcessing}
             className={`w-full py-4 sm:py-5 rounded-2xl text-lg font-semibold flex items-center justify-center space-x-3 shadow-xl mb-10
               ${
-                !wallet || recipients.length === 0 || isProcessing
+                !activeWallet || recipients.length === 0 || isProcessing
                   ? t.buttonAlt + " cursor-not-allowed"
                   : t.button +
                     " cursor-default hover:cursor-pointer active:cursor-pointer"
@@ -668,6 +820,14 @@ function App() {
           </span>
         </button>
       )}
+
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileImport}
+        accept=".txt"
+        style={{ display: "none" }}
+      />
     </div>
   );
 }
@@ -675,7 +835,7 @@ function App() {
 export default App;
 
 // Theme definitions
-interface ThemeConfig {
+export interface ThemeConfig {
   bg: string;
   card: string;
   cardDark: string;
