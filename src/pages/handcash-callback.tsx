@@ -1,12 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { HandCashConnect } from "@handcash/handcash-connect";
-import {
-  setHandcashState,
-  clearHandcashState,
-  secureStorage,
-  handcashStore,
-} from "../stores/handcash";
+import { setHandcashState } from "../stores/handcash";
 import type { HandCashAccount, HandCashProfile } from "../types/handcash";
 import { logger } from "../utils/logger";
 import { toast } from "react-hot-toast";

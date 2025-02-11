@@ -1,7 +1,8 @@
 /**
  * Logger utility that only shows logs in development environment
  */
-const isProduction = window.location.hostname === "www.push-the-button.app";
+const isProduction =
+  window.location.hostname === "www.squrtingsats.netlify.app";
 
 // Feature flags for logging
 export const LogConfig = {
@@ -28,18 +29,20 @@ const isHandCashLogEnabled = (level: string): boolean => {
   );
 };
 
+type LogArgs = unknown[];
+
 // Original logger implementation
 const baseLogger = {
-  log: (...args: any[]) => !isProduction && console.log(...args),
-  info: (...args: any[]) => !isProduction && console.info(...args),
-  warn: (...args: any[]) => !isProduction && console.warn(...args),
-  error: (...args: any[]) => !isProduction && console.error(...args),
-  debug: (...args: any[]) => !isProduction && console.debug(...args),
+  log: (...args: LogArgs) => !isProduction && console.log(...args),
+  info: (...args: LogArgs) => !isProduction && console.info(...args),
+  warn: (...args: LogArgs) => !isProduction && console.warn(...args),
+  error: (...args: LogArgs) => !isProduction && console.error(...args),
+  debug: (...args: LogArgs) => !isProduction && console.debug(...args),
 };
 
 // Enhanced logger with feature flags
 export const logger = {
-  log: (...args: any[]) => {
+  log: (...args: LogArgs) => {
     if (args[0]?.toString().includes("HandCash")) {
       if (isHandCashLogEnabled("info")) {
         baseLogger.log(...args);
@@ -48,7 +51,7 @@ export const logger = {
     }
     baseLogger.log(...args);
   },
-  info: (...args: any[]) => {
+  info: (...args: LogArgs) => {
     // Check if it's a HandCash log
     if (
       args[0]?.toString().includes("🔄 HandCash") ||
@@ -62,7 +65,7 @@ export const logger = {
     }
     baseLogger.info(...args);
   },
-  warn: (...args: any[]) => {
+  warn: (...args: LogArgs) => {
     if (args[0]?.toString().includes("HandCash")) {
       if (isHandCashLogEnabled("warn")) {
         baseLogger.warn(...args);
@@ -71,7 +74,7 @@ export const logger = {
     }
     baseLogger.warn(...args);
   },
-  error: (...args: any[]) => {
+  error: (...args: LogArgs) => {
     if (args[0]?.toString().includes("HandCash")) {
       if (isHandCashLogEnabled("error")) {
         baseLogger.error(...args);
@@ -80,7 +83,7 @@ export const logger = {
     }
     baseLogger.error(...args);
   },
-  debug: (...args: any[]) => {
+  debug: (...args: LogArgs) => {
     if (args[0]?.toString().includes("HandCash")) {
       if (isHandCashLogEnabled("debug")) {
         baseLogger.debug(...args);

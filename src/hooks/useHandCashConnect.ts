@@ -86,13 +86,13 @@ export function useHandCashConnect(): UseHandCashConnectReturn {
           const account = await handCashConnect.getAccountFromAuthToken(
             authToken
           );
+          logger.info("🔄 Fetching HandCash profile");
           const profile = await account.profile.getCurrentProfile();
-          const balanceResponse = await account.wallet.getSpendableBalance();
-
-          // Extract public key from profile data
           const publicKey =
-            (profile as any).publicProfile?.publicKey ||
-            profile.publicProfile.handle;
+            (profile as unknown as { publicProfile: { publicKey: string } })
+              .publicProfile?.publicKey || profile.publicProfile.handle;
+
+          const balanceResponse = await account.wallet.getSpendableBalance();
 
           const handcashAccount = {
             id: profile.publicProfile.handle,

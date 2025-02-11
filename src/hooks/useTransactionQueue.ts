@@ -13,14 +13,13 @@ import type {
   UseTransactionQueueReturn,
 } from "../types/index";
 import { logger } from "../utils/logger";
-import { fetchTransactionHex, fetchUtxos } from "../services/api";
+import { fetchTransactionHex } from "../services/api";
 import { supabaseClient } from "../supabaseClient";
 
 const MIN_FEE_RATE = 0.5; // 0.5 sats/kb minimum fee rate
 const SQUIRT_PREFIX = "SQUIRTINGSATS:::v1";
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 500; // 0.5 seconds between retries
-const INTER_TX_DELAY = 500; // 0.5 seconds between transactions
 
 // Helper to wait between retries
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

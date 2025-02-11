@@ -4,11 +4,7 @@ import { useStore } from "@nanostores/react";
 import { handcashStore, setHandcashState } from "../stores/handcash";
 import { logger } from "../utils/logger";
 import type { WalletData } from "../types/index";
-import type {
-  PaymentParameters,
-  PaymentRequestItem,
-  CurrencyCode,
-} from "../types/handcash-sdk";
+import type { PaymentParameters, CurrencyCode } from "../types/handcash-sdk";
 import { supabaseClient } from "../supabaseClient";
 
 const HANDCASH_APP_ID = import.meta.env.VITE_HANDCASH_APP_ID;

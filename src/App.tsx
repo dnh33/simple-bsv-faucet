@@ -21,23 +21,18 @@ import { useHandCashConnect } from "./hooks/useHandCashConnect";
 import { useHandCashWallet } from "./hooks/useHandCashWallet";
 import "./App.css";
 import { Toaster, toast } from "react-hot-toast";
-import { handcashStore, setHandcashState } from "./stores/handcash";
+import { handcashStore } from "./stores/handcash";
 import { logger } from "./utils/logger";
-import { useNavigate, useLocation } from "react-router-dom";
 import { useStore } from "@nanostores/react";
-import { HandCashConnect } from "@handcash/handcash-connect";
 import type { Theme } from "./types/theme";
-import type { HandCashProfile } from "./types/handcash";
 
 function App() {
-  const navigate = useNavigate();
-  const location = useLocation();
   const { connect: connectHandcash, disconnect: disconnectHandcash } =
     useHandCashConnect();
   const { wallet: handcashWallet, sendTransaction: sendHandcashTransaction } =
     useHandCashWallet();
   const handcashAccount = useStore(handcashStore).account;
-  const [isConnectingHandcash, setIsConnectingHandcash] = useState(false);
+  const [isConnectingHandcash] = useState(false);
 
   // Theme state
   const [theme, setTheme] = useState<Theme>("aqua");
@@ -122,7 +117,7 @@ function App() {
       setTimeout(() => setCopySuccess(false), 2000);
     } catch (error) {
       toast.error("Failed to copy address");
-      console.error("Failed to copy address:", error);
+      logger.error("Failed to copy address:", error);
     }
   };
 
@@ -139,7 +134,7 @@ function App() {
         });
         setRecipients(newRecipients);
       } catch (error) {
-        console.error("Failed to generate recipient addresses:", error);
+        logger.error("Failed to generate recipient addresses:", error);
       }
     };
 
@@ -153,7 +148,7 @@ function App() {
       toast.success("New wallet generated successfully");
     } catch (error) {
       toast.error("Failed to generate wallet");
-      console.error("Failed to generate wallet:", error);
+      logger.error("Failed to generate wallet:", error);
     } finally {
       setIsGenerating(false);
     }
@@ -184,7 +179,7 @@ function App() {
       }
     } catch (error) {
       toast.error("Failed to import wallet");
-      console.error("Failed to import wallet:", error);
+      logger.error("Failed to import wallet:", error);
     } finally {
       setIsGenerating(false);
       if (event.target) {
@@ -273,7 +268,7 @@ function App() {
       setRecipientCount(1); // Reset recipient count after successful transaction
     } catch (error) {
       toast.error("Failed to process transaction");
-      console.error("Failed to process transaction:", error);
+      logger.error("Failed to process transaction:", error);
     } finally {
       setIsProcessing(false);
     }
@@ -346,76 +341,158 @@ function App() {
         </div>
 
         {/* Main content area */}
-        <div className="max-w-6xl mx-auto space-y-6 sm:space-y-10 px-4 sm:px-6">
+        <div className="max-w-[calc(72rem-60px)] mx-auto space-y-6 sm:space-y-10 px-4 sm:px-6">
           {/* Header section */}
-          <div className="p-8 sm:p-10">
-            <div className="flex flex-col lg:flex-row gap-10">
+          <div className="relative p-8 sm:p-10 overflow-hidden">
+            {/* Animated background pattern - only for aqua theme */}
+            {theme === "aqua" && (
+              <div className="absolute inset-0 -z-20 overflow-hidden">
+                <div className="absolute w-full h-full">
+                  {[...Array(20)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="absolute rounded-full bg-cyan-500/5"
+                      style={{
+                        width: `${Math.random() * 20 + 10}rem`,
+                        height: `${Math.random() * 20 + 10}rem`,
+                        left: `${Math.random() * 100}%`,
+                        top: `${Math.random() * 100}%`,
+                        transform: `scale(${Math.random() * 0.5 + 0.5})`,
+                        animation: `float ${
+                          Math.random() * 10 + 20
+                        }s infinite linear`,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col lg:flex-row gap-10 relative">
+              {/* Logo section - keeping original logo and effects */}
               <div className="w-full lg:w-auto">
                 <div className="relative w-fit">
                   <img
                     src={t.logo}
                     alt="Splashing Sats Logo"
-                    className="h-28 sm:h-36 lg:h-44 w-auto object-contain"
+                    className="h-28 sm:h-36 lg:h-44 w-auto object-contain relative z-10"
                   />
                   {theme === "aqua" && (
-                    <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-blue-500 mix-blend-overlay opacity-20 rounded-full filter blur-2xl scale-110 animate-pulse"></div>
+                    <>
+                      {/* Main splash effect */}
+                      <div className="absolute inset-0 -z-10">
+                        <div className="absolute inset-0 animate-splash-wave">
+                          <div className="absolute inset-0 bg-gradient-to-r from-cyan-400/40 to-blue-500/40 rounded-full transform-gpu rotate-3d(1, 2, 1, 45deg) scale-y-50 blur-xl"></div>
+                        </div>
+                        {/* Multiple water droplets */}
+                        <div className="absolute inset-0">
+                          {[...Array(6)].map((_, i) => (
+                            <div
+                              key={i}
+                              className={`absolute w-4 h-4 rounded-full bg-cyan-400/60 blur-sm
+                                animate-droplet-${i + 1} transform-gpu`}
+                              style={{
+                                left: `${20 + i * 15}%`,
+                                top: `${30 + (i % 3) * 20}%`,
+                                animationDelay: `${i * 0.2}s`,
+                              }}
+                            ></div>
+                          ))}
+                        </div>
+                        {/* Ripple effects */}
+                        <div className="absolute inset-0">
+                          {[...Array(3)].map((_, i) => (
+                            <div
+                              key={i}
+                              className={`absolute inset-0 border-4 border-blue-400/20 rounded-full
+                                animate-ripple transform-gpu scale-100 blur-sm`}
+                              style={{
+                                animationDelay: `${i * 0.5}s`,
+                              }}
+                            ></div>
+                          ))}
+                        </div>
+                      </div>
+                      {/* 3D perspective container */}
+                      <div className="absolute inset-0 -z-20">
+                        <div
+                          className="absolute inset-0 bg-gradient-to-r from-cyan-400/20 to-blue-500/20 
+                          rounded-full transform-gpu rotate-3d(2, 1, 1, 60deg) scale-150 animate-perspective-shift blur-lg"
+                        ></div>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
 
+              {/* Enhanced content section */}
               <div className="flex-1 space-y-8">
+                {/* Main hero content with improved typography and layout */}
                 <div
-                  className={`space-y-5 ${t.card} rounded-2xl p-8 ${t.border} border shadow-xl`}
+                  className={`space-y-6 ${t.card} rounded-2xl p-8 ${t.border} border shadow-xl backdrop-blur-lg`}
                 >
-                  <p
-                    className={`${t.textMuted} text-lg sm:text-xl leading-relaxed`}
-                  >
-                    Squirting satoshis, one at a time.
-                  </p>
-                  <p
-                    className={`${t.textMuted} text-lg sm:text-xl leading-relaxed`}
-                  >
-                    Squirting Sats lets you distribute Bitcoin SV across the
-                    network, creating tiny treasure troves that might change
-                    someone's life in the future.
-                  </p>
-                  <p
-                    className={`${t.textMuted} text-lg sm:text-xl leading-relaxed`}
-                  >
+                  <div className="space-y-4">
+                    <h1
+                      className={`text-4xl sm:text-5xl font-bold bg-gradient-to-r ${t.accent} text-transparent bg-clip-text pb-2`}
+                    >
+                      Squirting satoshis,
+                      <span className="block">one at a time.</span>
+                    </h1>
+
+                    <div className="h-1 w-24 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"></div>
+
+                    <p
+                      className={`${t.textMuted} text-lg sm:text-xl leading-relaxed max-w-2xl`}
+                    >
+                      Squirting Sats lets you distribute Bitcoin SV across the
+                      network, creating tiny treasure troves that might change
+                      someone's life in the future.
+                    </p>
+                  </div>
+
+                  {/* Network Stats */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-6">
+                    <div className={`${t.cardDark} p-4 rounded-xl text-center`}>
+                      <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 text-transparent bg-clip-text mb-2">
+                        {stats
+                          .reduce((sum, stat) => sum + stat.totalSquirts, 0)
+                          .toLocaleString()}
+                      </div>
+                      <div className={`${t.textMuted} text-sm`}>
+                        Total Squirts
+                      </div>
+                    </div>
+                    <div className={`${t.cardDark} p-4 rounded-xl text-center`}>
+                      <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 text-transparent bg-clip-text mb-2">
+                        {stats
+                          .reduce((sum, stat) => sum + stat.totalSats, 0)
+                          .toLocaleString()}
+                      </div>
+                      <div className={`${t.textMuted} text-sm`}>
+                        Sats Distributed
+                      </div>
+                    </div>
+                    <div className={`${t.cardDark} p-4 rounded-xl text-center`}>
+                      <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 text-transparent bg-clip-text mb-2">
+                        {stats.length.toLocaleString()}
+                      </div>
+                      <div className={`${t.textMuted} text-sm`}>
+                        Active Squirters
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mission Statement */}
+                <div
+                  className={`${t.cardDark} p-6 rounded-xl border ${t.border} backdrop-blur-sm`}
+                >
+                  <p className={`${t.textMuted} text-lg leading-relaxed`}>
                     Every satoshi we squirt today could be tomorrow's
                     life-changing discovery. Join us in our mission to spread
                     opportunity and value across the blockchain.
                   </p>
                 </div>
-
-                {/* Total Squirts - Only show if not using HandCash */}
-                {activeWallet && !handcashAccount && (
-                  <div
-                    className={`inline-flex items-center gap-4 ${
-                      t.cardDark
-                    } py-3 px-6 rounded-xl ${
-                      theme === "aqua" ? "bg-opacity-50" : ""
-                    }`}
-                  >
-                    <span
-                      className={`${t.textMuted} font-medium text-base sm:text-lg`}
-                    >
-                      Total Squirts
-                    </span>
-                    <div className={`h-5 w-px ${t.border} opacity-30`}></div>
-                    <span
-                      className={`text-2xl sm:text-3xl font-bold ${
-                        theme === "accessibility"
-                          ? "text-blue-900"
-                          : `bg-gradient-to-r ${t.accent} text-transparent bg-clip-text`
-                      }`}
-                    >
-                      {stats.find(
-                        (s) => s.address === (activeWallet?.address ?? "")
-                      )?.totalSquirts || completedCount}
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
           </div>
