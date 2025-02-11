@@ -15,26 +15,40 @@
     "@nanostores/react": "^0.8.4",
     "@supabase/supabase-js": "^2.48.1",
     "@tailwindcss/vite": "^4.0.4",
+    "buffer": "^6.0.3",
+    "crypto-browserify": "^3.12.1",
+    "events": "^3.3.0",
     "lucide-react": "^0.474.0",
     "nanostores": "^0.11.3",
+    "process": "^0.11.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.5.1",
     "react-router-dom": "^7.1.5",
-    "tailwindcss": "^4.0.4"
+    "tailwindcss": "^4.0.4",
+    "url": "^0.11.4",
+    "util": "^0.12.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
-    "@types/node": "^22.10.10",
+    "@types/node": "^22.13.1",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "assert": "^2.1.0",
+    "browserify-sign": "^4.2.3",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.16",
     "globals": "^15.14.0",
+    "https-browserify": "^1.0.0",
+    "os-browserify": "^0.3.0",
+    "readable-stream": "^4.7.0",
+    "stream-browserify": "^3.0.0",
+    "stream-http": "^3.2.0",
     "typescript": "~5.6.2",
     "typescript-eslint": "^8.18.2",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "vite-plugin-node-polyfills": "^0.23.0"
   }
 }

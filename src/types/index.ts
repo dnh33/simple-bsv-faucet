@@ -41,6 +41,7 @@ export interface QueuedTransaction {
   txid?: string;
   username?: string;
   isPromo?: boolean;
+  timestamp: number;
 }
 
 // Squirt-related interfaces

@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { HandCashConnect } from "@handcash/handcash-connect";
-import { setHandcashState, clearHandcashState } from "../stores/handcash";
+import {
+  setHandcashState,
+  clearHandcashState,
+  secureStorage,
+  handcashStore,
+} from "../stores/handcash";
 import type { HandCashAccount, HandCashProfile } from "../types/handcash";
 import { logger } from "../utils/logger";
 import { toast } from "react-hot-toast";
@@ -22,22 +27,29 @@ const handCashClient = new HandCashConnect({
 
 export default function HandCashCallback() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isProcessing, setIsProcessing] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    logger.info("🔄 HandCash callback component mounted");
+    logger.info("🔄 HandCash callback component mounted", {
+      url: window.location.href,
+      search: location.search,
+    });
 
     const handleCallback = async () => {
-      const urlParams = new URLSearchParams(window.location.search);
+      // Get auth token from URL parameters
+      const urlParams = new URLSearchParams(location.search);
       const authToken = urlParams.get("authToken");
       const fullUrl = window.location.href;
 
       logger.info("📥 HandCash callback received", {
         hasToken: !!authToken,
         fullUrl,
+        search: location.search,
       });
 
+      // Validate auth token
       if (!authToken) {
         const errorMessage = "No auth token received from HandCash";
         setError(errorMessage);
@@ -56,12 +68,12 @@ export default function HandCashCallback() {
       const toastId = toast.loading("Connecting to HandCash...");
 
       try {
-        // Clear existing data and set connecting state
-        clearHandcashState();
-        setHandcashState({ connectionStatus: "connecting" });
+        // Get account from SDK first
+        logger.info("🔄 Fetching HandCash account with token", {
+          tokenLength: authToken.length,
+          tokenStart: authToken.substring(0, 4) + "...",
+        });
 
-        // Get account from SDK
-        logger.info("🔄 Fetching HandCash account");
         const account = await handCashClient.getAccountFromAuthToken(authToken);
 
         // Get profile
@@ -83,9 +95,20 @@ export default function HandCashCallback() {
           balance: balanceInSatoshis,
         };
 
+        // Store data
+        localStorage.setItem("handcash_auth_token", authToken);
+        localStorage.setItem(
+          "handcash_account",
+          JSON.stringify(handcashAccount)
+        );
+
         // Update store with complete state
-        logger.info("✅ Finalizing HandCash connection");
-        await setHandcashState({
+        logger.info("✅ Finalizing HandCash connection", {
+          handle: profile.handle,
+          hasBalance: !!balanceInSatoshis,
+        });
+
+        setHandcashState({
           account: handcashAccount,
           authToken,
           lastError: null,
@@ -98,6 +121,10 @@ export default function HandCashCallback() {
         const errorMessage =
           err instanceof Error ? err.message : "Unknown error";
         logger.error("❌ Error processing HandCash callback:", err);
+
+        // Clean up storage
+        localStorage.removeItem("handcash_auth_token");
+        localStorage.removeItem("handcash_account");
 
         setHandcashState({
           account: null,
@@ -121,7 +148,7 @@ export default function HandCashCallback() {
     return () => {
       logger.info("👋 HandCash callback component unmounting");
     };
-  }, [navigate]);
+  }, [navigate, location]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center">

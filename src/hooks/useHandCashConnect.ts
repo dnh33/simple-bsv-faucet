@@ -1,13 +1,24 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useStore } from "@nanostores/react";
 import { HandCashConnect } from "@handcash/handcash-connect";
-import { handcashStore, setHandcashState } from "../stores/handcash";
+import {
+  handcashStore,
+  setHandcashState,
+  secureStorage,
+} from "../stores/handcash";
 import type { HandCashAccount } from "../types/handcash";
 import { logger } from "../utils/logger";
 import { toast } from "react-hot-toast";
+import { useLocation } from "react-router-dom";
 
 const HANDCASH_APP_ID = import.meta.env.VITE_HANDCASH_APP_ID;
 const HANDCASH_APP_SECRET = import.meta.env.VITE_HANDCASH_APP_SECRET;
+
+// Initialize HandCash Connect once
+const handCashConnect = new HandCashConnect({
+  appId: HANDCASH_APP_ID,
+  appSecret: HANDCASH_APP_SECRET,
+});
 
 // Get base URL for callbacks
 const getBaseUrl = () => {
@@ -24,183 +35,123 @@ logger.info("🔧 Environment configuration", {
   hasAppSecret: !!HANDCASH_APP_SECRET,
 });
 
-// Store the redirect URL for use in the connect function
-const redirectUrl = `${getBaseUrl()}/handcash-callback`;
-
-// HandCash permissions required by the app
-const REQUIRED_PERMISSIONS = [
-  "PAYMENT", // For sending transactions
-  "SIGN_DATA", // For data signing
-  "USER_PUBLIC_PROFILE", // For profile info
-  "GET_BALANCE", // For checking balance
-].join(" ");
-
 interface UseHandCashConnectReturn {
   account: HandCashAccount | null;
   isConnecting: boolean;
   error: string | null;
   connect: () => Promise<void>;
-  disconnect: () => void;
+  disconnect: () => Promise<void>;
 }
 
 export function useHandCashConnect(): UseHandCashConnectReturn {
+  const location = useLocation();
   const state = useStore(handcashStore);
   const account = state.account;
-  const authToken = state.authToken;
 
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasAttemptedReconnect, setHasAttemptedReconnect] = useState(false);
 
-  // Memoize the HandCash client to prevent unnecessary re-renders
-  const handCashClient = useMemo(
-    () =>
-      new HandCashConnect({
-        appId: HANDCASH_APP_ID,
-        appSecret: HANDCASH_APP_SECRET,
-      }),
-    []
-  );
-
-  const updateBalance = useCallback(
-    async (authToken: string) => {
-      try {
-        const account = await handCashClient.getAccountFromAuthToken(authToken);
-        const balanceResponse = await account.wallet.getSpendableBalance();
-        return balanceResponse.spendableSatoshiBalance;
-      } catch (error) {
-        logger.error("Failed to update balance:", error);
-        return undefined;
-      }
-    },
-    [handCashClient]
-  );
-
-  // Auto-reconnect if token exists
+  // Handle auth token from URL
   useEffect(() => {
-    const reconnect = async () => {
-      if (hasAttemptedReconnect || account) return;
+    const handleAuthToken = async () => {
+      const urlParams = new URLSearchParams(location.search);
+      const authToken = urlParams.get("authToken");
 
-      const authToken = localStorage.getItem("handcash_auth_token");
-      const storedAccount = localStorage.getItem("handcash_account");
-
-      logger.info("Auto-reconnect check", {
-        hasToken: !!authToken,
-        hasStoredAccount: !!storedAccount,
-        baseUrl: getBaseUrl(),
+      logger.info("🔍 Checking auth token state", {
+        hasAuthToken: !!authToken,
+        hasAccount: !!account,
+        connectionStatus: state.connectionStatus,
+        currentUrl: window.location.href,
       });
 
-      if (!authToken) {
-        setHasAttemptedReconnect(true);
-        return;
-      }
-
-      const toastId = toast.loading("Reconnecting to HandCash...");
-
-      try {
+      // Only proceed with connection if we have an auth token and no account
+      if (authToken && !account) {
         setIsConnecting(true);
-        logger.info("Attempting auto-reconnect with stored token");
-
-        const handcashAccount = await handCashClient.getAccountFromAuthToken(
-          authToken
+        logger.info(
+          "🔄 HandCash auth token detected in URL, proceeding with connection"
         );
-        logger.info("Auto-reconnect: Retrieved HandCash account");
 
-        const profile = await handcashAccount.profile.getCurrentProfile();
-        logger.info("Auto-reconnect: Retrieved profile", {
-          handle: profile.publicProfile.handle,
-        });
+        try {
+          // Clear URL without refresh
+          window.history.replaceState(
+            {},
+            document.title,
+            window.location.pathname
+          );
+          logger.info("🧹 Cleared URL params", {
+            newUrl: window.location.href,
+          });
 
-        const balanceInSatoshis = await updateBalance(authToken);
-        logger.info("Auto-reconnect: Retrieved balance", {
-          balanceInSatoshis,
-        });
+          // Get account from SDK
+          const account = await handCashConnect.getAccountFromAuthToken(
+            authToken
+          );
+          const profile = await account.profile.getCurrentProfile();
+          const balanceResponse = await account.wallet.getSpendableBalance();
 
-        setHandcashState({
-          account: {
+          // Extract public key from profile data
+          const publicKey =
+            (profile as any).publicProfile?.publicKey ||
+            profile.publicProfile.handle;
+
+          const handcashAccount = {
             id: profile.publicProfile.handle,
-            publicKey: profile.publicProfile.handle,
+            publicKey,
             paymail: `${profile.publicProfile.handle}@handcash.io`,
             displayName: profile.publicProfile.displayName,
             avatarUrl: profile.publicProfile.avatarUrl,
-            balance: balanceInSatoshis,
-          },
-          authToken,
-          lastError: null,
-        });
+            balance: balanceResponse.spendableSatoshiBalance,
+          };
 
-        logger.info("Auto-reconnect: Updated HandCash account state");
-        toast.success("Reconnected to HandCash", { id: toastId });
-      } catch (err) {
-        logger.error("Error auto-reconnecting HandCash:", err);
-        localStorage.removeItem("handcash_auth_token");
-        localStorage.removeItem("handcash_account");
-        setHandcashState({
-          account: null,
-          authToken: null,
-          lastError: null,
-        });
-        toast.error("Failed to reconnect to HandCash", { id: toastId });
-      } finally {
-        setIsConnecting(false);
-        setHasAttemptedReconnect(true);
-      }
-    };
+          // Store data securely
+          await secureStorage.set(
+            "handcash_account",
+            JSON.stringify(handcashAccount)
+          );
+          await secureStorage.set("handcash_auth_token", authToken);
 
-    reconnect();
-  }, [
-    account,
-    hasAttemptedReconnect,
-    updateBalance,
-    authToken,
-    handCashClient,
-  ]);
-
-  // Fetch balance periodically when connected
-  useEffect(() => {
-    if (!account?.id) return;
-
-    const fetchBalance = async () => {
-      try {
-        const authToken = localStorage.getItem("handcash_auth_token");
-        if (!authToken) {
-          logger.warn("No auth token found for balance update");
-          return;
-        }
-
-        logger.info("Fetching updated balance");
-        const balanceInSatoshis = await updateBalance(authToken);
-
-        if (account) {
-          const currentAccount = account as HandCashAccount;
-          setHandcashState({
-            account: {
-              id: currentAccount.id,
-              publicKey: currentAccount.publicKey,
-              paymail: currentAccount.paymail,
-              displayName: currentAccount.displayName,
-              avatarUrl: currentAccount.avatarUrl,
-              balance: balanceInSatoshis,
-            },
+          // Update state
+          await setHandcashState({
+            account: handcashAccount,
             authToken,
             lastError: null,
+            connectionStatus: "connected",
           });
+
+          toast.success("Successfully connected to HandCash");
+        } catch (err) {
+          const errorMessage =
+            err instanceof Error ? err.message : "Unknown error";
+          logger.error("❌ HandCash connection error:", err);
+          toast.error(`Failed to connect to HandCash: ${errorMessage}`);
+
+          // Clean up
+          logger.info("🧹 Cleaning up after connection error");
+          secureStorage.clear();
+          await setHandcashState({
+            account: null,
+            authToken: null,
+            lastError: errorMessage,
+            connectionStatus: "disconnected",
+          });
+        } finally {
+          setIsConnecting(false);
         }
-        logger.info("Updated account with new balance");
-      } catch (err) {
-        logger.error("Error fetching HandCash balance:", err);
-        toast.error("Failed to update HandCash balance");
+      } else if (authToken) {
+        logger.info("⏭️ Skipping auth token processing", {
+          reason: account
+            ? "Account already exists"
+            : state.connectionStatus === "disconnected"
+            ? "Recently disconnected"
+            : isConnecting
+            ? "Already connecting"
+            : "Unknown reason",
+        });
       }
     };
 
-    // Fetch initial balance
-    fetchBalance();
-
-    // Set up periodic balance updates
-    const interval = setInterval(fetchBalance, 30000); // Every 30 seconds
-
-    return () => clearInterval(interval);
-  }, [account, updateBalance, authToken, handCashClient]);
+    handleAuthToken();
+  }, [location.search, account, state.connectionStatus, isConnecting]);
 
   const connect = useCallback(async () => {
     if (!HANDCASH_APP_ID || !HANDCASH_APP_SECRET) {
@@ -213,20 +164,11 @@ export function useHandCashConnect(): UseHandCashConnectReturn {
       setIsConnecting(true);
       setError(null);
 
-      logger.info("🔄 Initiating HandCash connection", {
-        redirectUrl,
-        permissions: REQUIRED_PERMISSIONS,
-      });
+      // Manual URL construction as shown in docs
+      const redirectionLoginUrl = `https://app.handcash.io/#/authorizeApp?appId=${HANDCASH_APP_ID}`;
 
-      // Get the redirection URL from the SDK with our callback URL and permissions
-      const authRedirectUrl = handCashClient.getRedirectionUrl({
-        appId: HANDCASH_APP_ID,
-        redirectUrl,
-        permissions: REQUIRED_PERMISSIONS,
-      });
-
-      logger.info("🔄 Redirecting to HandCash", { authRedirectUrl });
-      window.location.href = authRedirectUrl;
+      logger.info("🔄 Redirecting to HandCash", { redirectionLoginUrl });
+      window.location.href = redirectionLoginUrl;
     } catch (err) {
       setError("Failed to connect to HandCash");
       toast.error("Failed to connect to HandCash");
@@ -234,18 +176,58 @@ export function useHandCashConnect(): UseHandCashConnectReturn {
     } finally {
       setIsConnecting(false);
     }
-  }, [handCashClient]);
-
-  const disconnect = useCallback(() => {
-    setHandcashState({
-      account: null,
-      authToken: null,
-      lastError: null,
-      connectionStatus: "disconnected",
-    });
-    setHasAttemptedReconnect(false);
-    toast.success("Disconnected from HandCash");
   }, []);
+
+  const disconnect = useCallback(async () => {
+    try {
+      logger.info("🔄 Starting HandCash disconnect process");
+
+      // Clear URL without refresh
+      const oldUrl = window.location.href;
+      window.history.replaceState({}, document.title, window.location.pathname);
+      logger.info("🧹 Cleared URL", {
+        oldUrl,
+        newUrl: window.location.href,
+      });
+
+      // Clear all storage locations
+      logger.info("🗑️ Clearing storage");
+      // Clear localStorage
+      localStorage.removeItem("handcash_auth_token");
+      localStorage.removeItem("handcash_account");
+      // Clear sessionStorage
+      sessionStorage.removeItem("handcash_encryption_key");
+      sessionStorage.removeItem("handcash_encrypted_account");
+      sessionStorage.removeItem("handcash_encrypted_token");
+      // Clear secure storage
+      secureStorage.clear();
+
+      // Update state
+      logger.info("📝 Updating HandCash state to disconnected");
+      await setHandcashState({
+        account: null,
+        authToken: null,
+        lastError: null,
+        connectionStatus: "disconnected",
+      });
+
+      // Force a page reload to ensure clean state
+      window.location.reload();
+
+      toast.success("Disconnected from HandCash");
+    } catch (error) {
+      logger.error("❌ Error during disconnect:", error);
+      toast.error("Failed to disconnect properly");
+    }
+  }, []);
+
+  // Subscribe to store changes
+  useEffect(() => {
+    if (state.connectionStatus === "disconnected") {
+      setIsConnecting(false);
+      setError(null);
+    }
+  }, [state.connectionStatus]);
 
   return {
     account,

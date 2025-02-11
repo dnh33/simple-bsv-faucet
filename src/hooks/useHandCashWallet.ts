@@ -9,9 +9,16 @@ import type {
   PaymentRequestItem,
   CurrencyCode,
 } from "../types/handcash-sdk";
+import { supabaseClient } from "../supabaseClient";
 
 const HANDCASH_APP_ID = import.meta.env.VITE_HANDCASH_APP_ID;
 const HANDCASH_APP_SECRET = import.meta.env.VITE_HANDCASH_APP_SECRET;
+const SQUIRT_PREFIX = "SQUIRTINGSATS:::v1";
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 500; // 0.5 seconds between retries
+
+// Helper to wait between retries
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 logger.info("🔑 HandCash wallet credentials check", {
   hasAppId: !!HANDCASH_APP_ID,
@@ -26,7 +33,9 @@ const handCashClient = new HandCashConnect({
 interface UseHandCashWalletReturn {
   wallet: WalletData | null;
   sendTransaction: (
-    recipients: { address: string; amount: number }[]
+    recipients: { address: string; amount: number }[],
+    username?: string,
+    isPromo?: boolean
   ) => Promise<string>;
 }
 
@@ -55,7 +64,11 @@ export function useHandCashWallet(): UseHandCashWalletReturn {
     : null;
 
   const sendTransaction = useCallback(
-    async (recipients: { address: string; amount: number }[]) => {
+    async (
+      recipients: { address: string; amount: number }[],
+      username?: string,
+      isPromo?: boolean
+    ) => {
       if (!handcashAccount || !authToken) {
         logger.error(
           "❌ Attempted to send transaction without HandCash account"
@@ -63,38 +76,64 @@ export function useHandCashWallet(): UseHandCashWalletReturn {
         throw new Error("HandCash account not connected");
       }
 
+      if (recipients.length !== 1) {
+        throw new Error("HandCash transactions must be sent one at a time");
+      }
+
+      const recipient = recipients[0];
+
       try {
         logger.info("🔄 Initializing HandCash transaction", {
-          recipients: recipients.map((r) => ({
-            address: r.address,
-            amount: r.amount,
-          })),
-          totalAmount: recipients.reduce((sum, r) => sum + r.amount, 0),
+          recipient: {
+            address: recipient.address,
+            amount: recipient.amount,
+          },
         });
 
         const account = await handCashClient.getAccountFromAuthToken(authToken);
         logger.info("✅ Retrieved HandCash account for transaction");
 
-        // Format payments according to SDK requirements
-        const paymentParameters: PaymentParameters = {
+        // Create OP_RETURN message
+        const messageType = isPromo ? "promo" : "squirt";
+        const message = username || "anon";
+        const opReturnMessage = `${SQUIRT_PREFIX}:::${messageType}:::${message}`;
+
+        // Convert UTF-8 string to hex
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(opReturnMessage);
+        const hex = Array.from(bytes)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+
+        const paymentParams: PaymentParameters = {
           description: "Squirting sats 💦",
           appAction: "squirt",
-          payments: recipients.map(
-            (recipient): PaymentRequestItem => ({
+          payments: [
+            {
               destination: recipient.address,
               sendAmount: recipient.amount,
               currencyCode: "SAT" as CurrencyCode,
-            })
-          ),
+            },
+          ],
+          attachment: {
+            format: "hex",
+            value: hex,
+          },
         };
 
         logger.info("🔄 Sending HandCash transaction", {
-          parameters: paymentParameters,
+          parameters: paymentParams,
+          recipient: recipient.address,
         });
 
-        const result = await account.wallet.pay(paymentParameters);
+        const result = await account.wallet.pay(paymentParams);
 
-        // Update balance after successful transaction
+        logger.info("✅ HandCash transaction sent", {
+          txid: result.transactionId,
+          recipient: recipient.address,
+        });
+
+        // Update balance
         const balanceResponse = await account.wallet.getSpendableBalance();
         setHandcashState({
           account: {
@@ -103,12 +142,45 @@ export function useHandCashWallet(): UseHandCashWalletReturn {
           },
         });
 
-        logger.info("✅ HandCash transaction sent", {
-          txid: result.transactionId,
-          recipients: recipients.length,
-          result,
-          newBalance: balanceResponse.spendableSatoshiBalance,
-        });
+        // Record in Supabase
+        let dbSuccess = false;
+        for (let attempt = 0; attempt < MAX_RETRIES && !dbSuccess; attempt++) {
+          try {
+            const { error: dbError } = await supabaseClient
+              .from("squirts")
+              .insert({
+                sender_address: handcashAccount.paymail,
+                username: username || "anon",
+                amount: recipient.amount,
+                txid: result.transactionId,
+              });
+
+            if (!dbError) {
+              dbSuccess = true;
+              logger.info("✅ Recorded HandCash squirt in Supabase", {
+                txid: result.transactionId,
+                recipient: recipient.address,
+              });
+            } else {
+              throw dbError;
+            }
+          } catch (dbError) {
+            logger.error(
+              `❌ Database recording attempt ${attempt + 1} failed:`,
+              dbError
+            );
+            if (attempt < MAX_RETRIES - 1) {
+              await wait(RETRY_DELAY * Math.pow(2, attempt));
+            }
+          }
+        }
+
+        if (!dbSuccess) {
+          logger.error("❌ Failed to record HandCash squirt in Supabase", {
+            txid: result.transactionId,
+            recipient: recipient.address,
+          });
+        }
 
         return result.transactionId;
       } catch (error) {
@@ -120,13 +192,12 @@ export function useHandCashWallet(): UseHandCashWalletReturn {
                   stack: error.stack,
                 }
               : error,
-          recipients: recipients.map((r) => ({
-            address: r.address,
-            amount: r.amount,
-          })),
+          recipient: {
+            address: recipient.address,
+            amount: recipient.amount,
+          },
         });
 
-        // Update error state
         setHandcashState({
           lastError:
             error instanceof Error ? error.message : "Transaction failed",

@@ -21,10 +21,24 @@ import { useHandCashConnect } from "./hooks/useHandCashConnect";
 import { useHandCashWallet } from "./hooks/useHandCashWallet";
 import "./App.css";
 import { Toaster, toast } from "react-hot-toast";
-import { handcashStore } from "./stores/handcash";
+import { handcashStore, setHandcashState } from "./stores/handcash";
 import { logger } from "./utils/logger";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useStore } from "@nanostores/react";
+import { HandCashConnect } from "@handcash/handcash-connect";
+import type { Theme } from "./types/theme";
+import type { HandCashProfile } from "./types/handcash";
 
 function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { connect: connectHandcash, disconnect: disconnectHandcash } =
+    useHandCashConnect();
+  const { wallet: handcashWallet, sendTransaction: sendHandcashTransaction } =
+    useHandCashWallet();
+  const handcashAccount = useStore(handcashStore).account;
+  const [isConnectingHandcash, setIsConnectingHandcash] = useState(false);
+
   // Theme state
   const [theme, setTheme] = useState<Theme>("aqua");
   const [showThemeSelector, setShowThemeSelector] = useState(false);
@@ -45,18 +59,6 @@ function App() {
     sourceAddress: wallet?.address || "",
     fetchUtxos: fetchUtxos,
   });
-
-  // HandCash Connect hooks
-  const {
-    connect: connectHandcash,
-    isConnecting: isConnectingHandcash,
-    account: handcashAccount,
-    disconnect: disconnectHandcash,
-  } = useHandCashConnect();
-
-  // HandCash Wallet hooks
-  const { wallet: handcashWallet, sendTransaction: sendHandcashTransaction } =
-    useHandCashWallet();
 
   // UI state
   const [recipientCount, setRecipientCount] = useState<number>(1);
@@ -213,31 +215,48 @@ function App() {
     }
 
     setIsProcessing(true);
-    const toastId = toast.loading("Processing transactions...");
 
     try {
-      if (handcashWallet) {
-        // Add HandCash transaction to queue for UI
-        const tx = addToQueue(
-          recipients,
-          username.trim() || handcashAccount?.displayName,
+      // Create all transaction queue entries upfront
+      const queuedTxs = recipients.map((recipient) =>
+        addToQueue(
+          [recipient],
+          username.trim() || (handcashAccount?.displayName ?? undefined),
           isPromo
-        );
+        )
+      );
 
-        // Send through HandCash
-        const txid = await sendHandcashTransaction(recipients);
+      if (handcashWallet) {
+        try {
+          // Send through HandCash one at a time
+          for (const recipient of recipients) {
+            const txid = await sendHandcashTransaction(
+              [recipient], // Send single recipient
+              username.trim() || (handcashAccount?.displayName ?? undefined),
+              isPromo
+            );
 
-        // Update transaction status
-        tx.status = "completed";
-        tx.txid = txid;
+            // Update transaction status
+            const tx = queuedTxs.find(
+              (t) => t.recipients[0]?.address === recipient.address
+            );
+            if (tx) {
+              tx.status = "completed";
+              tx.txid = txid;
+            }
+          }
+        } catch (error) {
+          // Mark all transactions as failed if HandCash transaction fails
+          queuedTxs.forEach((tx) => {
+            tx.status = "failed";
+            tx.error =
+              error instanceof Error ? error.message : "Transaction failed";
+          });
+          throw error;
+        }
       } else {
-        // Create individual transaction for each recipient using BSV SDK
-        for (const recipient of recipients) {
-          const tx = addToQueue(
-            [recipient],
-            username.trim() || undefined,
-            isPromo
-          );
+        // Process each transaction using BSV SDK
+        for (const tx of queuedTxs) {
           await processTransaction(tx);
         }
       }
@@ -251,31 +270,14 @@ function App() {
           amount: 1,
         },
       ]);
-
-      toast.success("Transaction completed successfully", {
-        id: toastId,
-      });
+      setRecipientCount(1); // Reset recipient count after successful transaction
     } catch (error) {
-      toast.error("Failed to process transaction", {
-        id: toastId,
-      });
+      toast.error("Failed to process transaction");
       console.error("Failed to process transaction:", error);
     } finally {
       setIsProcessing(false);
     }
   };
-
-  // Monitor HandCash store changes
-  useEffect(() => {
-    const unsubscribe = handcashStore.subscribe((state) => {
-      logger.debug("HandCash store update", {
-        hasAccount: !!state.account,
-        connectionStatus: state.connectionStatus,
-        hasAuthToken: !!state.authToken,
-      });
-    });
-    return () => unsubscribe();
-  }, []);
 
   // Rest of the UI code from the sample, but using our SDK variables
   return (
@@ -386,7 +388,8 @@ function App() {
                   </p>
                 </div>
 
-                {activeWallet && (
+                {/* Total Squirts - Only show if not using HandCash */}
+                {activeWallet && !handcashAccount && (
                   <div
                     className={`inline-flex items-center gap-4 ${
                       t.cardDark
@@ -407,8 +410,9 @@ function App() {
                           : `bg-gradient-to-r ${t.accent} text-transparent bg-clip-text`
                       }`}
                     >
-                      {stats.find((s) => s.address === activeWallet.address)
-                        ?.totalSquirts || completedCount}
+                      {stats.find(
+                        (s) => s.address === (activeWallet?.address ?? "")
+                      )?.totalSquirts || completedCount}
                     </span>
                   </div>
                 )}
@@ -481,8 +485,8 @@ function App() {
               {/* Connected Wallets Display */}
               {(activeWallet || handcashAccount) && (
                 <div className="space-y-6">
-                  {/* BSV SDK Wallet */}
-                  {activeWallet && (
+                  {/* BSV SDK Wallet - Only show if HandCash is not connected */}
+                  {activeWallet && !handcashAccount && (
                     <div className={`${t.bg} p-6 rounded-xl`}>
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 mb-4">
                         <div className="flex items-center gap-3">
@@ -530,18 +534,25 @@ function App() {
 
                   {/* HandCash Account */}
                   {handcashAccount && (
-                    <div className={`${t.bg} p-6 rounded-xl mt-4`}>
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 mb-4">
-                        <div className="flex items-center gap-4">
-                          <img
-                            src={handcashAccount.avatarUrl}
-                            alt={handcashAccount.displayName}
-                            className="w-10 h-10 rounded-full"
-                          />
-                          <div>
-                            <div className="flex items-center gap-2">
+                    <div className={`${t.bg} p-6 rounded-xl`}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-4">
+                          <div className="relative">
+                            <img
+                              src={handcashAccount.avatarUrl}
+                              alt={handcashAccount.displayName}
+                              className="w-12 h-12 rounded-full ring-2 ring-[#1CF567]/20"
+                            />
+                            <img
+                              src="/images/handcash-icon.svg"
+                              alt="HandCash"
+                              className="absolute -bottom-1 -right-1 w-5 h-5 opacity-90 bg-[#0a3a1c] rounded-full p-0.5 ring-2 ring-[#1CF567]/20"
+                            />
+                          </div>
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-3 mb-2">
                               <span
-                                className={`text-2xl font-semibold ${
+                                className={`text-xl font-semibold ${
                                   theme === "accessibility"
                                     ? "text-blue-900"
                                     : "text-white"
@@ -549,35 +560,61 @@ function App() {
                               >
                                 {handcashAccount.displayName}
                               </span>
-                              <img
-                                src="/images/handcash-icon.svg"
-                                alt="HandCash"
-                                className="w-5 h-5 opacity-90"
-                              />
                             </div>
-                            <div className="flex flex-col gap-1">
-                              <span
-                                className={`${t.textMuted} text-sm font-mono`}
-                              >
-                                {handcashAccount.paymail}
-                              </span>
-                              <span className={`${t.textMuted} text-sm`}>
-                                Balance:{" "}
+                            <span
+                              className={`${t.textMuted} text-sm font-mono mt-0.5`}
+                            >
+                              {handcashAccount.paymail}
+                            </span>
+                            <span
+                              className={`${
+                                theme === "accessibility"
+                                  ? "text-blue-900"
+                                  : "text-white"
+                              } text-lg font-medium mt-2`}
+                            >
+                              Balance:{" "}
+                              <span className="font-semibold">
                                 {handcashAccount.balance?.toLocaleString() ||
-                                  "0"}{" "}
-                                satoshis
-                              </span>
-                            </div>
+                                  "0"}
+                              </span>{" "}
+                              satoshis
+                            </span>
                           </div>
                         </div>
-                        <button
-                          onClick={disconnectHandcash}
-                          className={`px-4 py-2 ${t.buttonAlt} rounded-xl transition-colors flex items-center gap-2 cursor-default hover:cursor-pointer active:cursor-pointer`}
-                          title="Disconnect HandCash"
-                        >
-                          <span>Disconnect</span>
-                          <X className="w-5 h-5" />
-                        </button>
+                        <div className="flex flex-col items-end gap-3">
+                          <div
+                            className={`inline-flex items-center gap-3 ${t.cardDark} py-2 px-4 rounded-xl`}
+                          >
+                            <span
+                              className={`${t.textMuted} font-medium text-sm`}
+                            >
+                              Total Squirts
+                            </span>
+                            <div
+                              className={`h-4 w-px ${t.border} opacity-30`}
+                            ></div>
+                            <span
+                              className={`text-xl font-bold ${
+                                theme === "accessibility"
+                                  ? "text-blue-900"
+                                  : `bg-gradient-to-r ${t.accent} text-transparent bg-clip-text`
+                              }`}
+                            >
+                              {stats.find(
+                                (s) =>
+                                  s.address === (activeWallet?.address ?? "")
+                              )?.totalSquirts || completedCount}
+                            </span>
+                          </div>
+                          <button
+                            onClick={disconnectHandcash}
+                            className={`w-full px-4 py-2 ${t.buttonAlt} rounded-xl transition-colors flex items-center justify-center gap-2 text-sm hover:opacity-80`}
+                            title="Disconnect HandCash"
+                          >
+                            Disconnect
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -735,7 +772,8 @@ function App() {
                 />
               </div>
               <p className={`text-base ${t.textMuted} mt-2`}>
-                {completedCount}/{transactions.length} Completed
+                {completedCount}/{transactions.length} Transaction
+                {transactions.length !== 1 ? "s" : ""} Completed
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -757,17 +795,60 @@ function App() {
           </div>
           <div className="max-h-[280px] sm:max-h-[280px] overflow-y-auto">
             {[...transactions]
-              .reverse() // Show newest first
+              .sort((a, b) => {
+                // Show pending/processing transactions at the top
+                const isActiveA =
+                  a.status === "pending" || a.status === "processing";
+                const isActiveB =
+                  b.status === "pending" || b.status === "processing";
+
+                if (isActiveA && isActiveB) {
+                  // If both are active, show newest first
+                  return (
+                    new Date(b.timestamp ?? 0).getTime() -
+                    new Date(a.timestamp ?? 0).getTime()
+                  );
+                }
+
+                if (isActiveA) return -1; // Show active before completed/failed
+                if (isActiveB) return 1;
+
+                // For completed/failed, show newest first
+                return (
+                  new Date(b.timestamp ?? 0).getTime() -
+                  new Date(a.timestamp ?? 0).getTime()
+                );
+              })
               .map((tx, index) => (
                 <div
                   key={tx.id}
                   className={`p-4 border-b ${
                     t.border
-                  } flex items-center justify-between ${
-                    index >= 4 ? "animate-fade-in" : ""
-                  }`}
+                  } flex items-center justify-between
+                    ${index >= 4 ? "animate-fade-in" : ""}
+                    ${tx.status === "completed" ? "animate-complete" : ""}
+                    ${tx.status === "failed" ? "animate-fail" : ""}
+                    transform transition-all duration-500 ease-in-out
+                    ${
+                      tx.status === "completed" || tx.status === "failed"
+                        ? "hover:-translate-y-1"
+                        : ""
+                    }
+                    relative
+                  `}
                 >
-                  <div className="flex-1 mr-4">
+                  {/* Status indicator overlay */}
+                  {(tx.status === "completed" || tx.status === "failed") && (
+                    <div
+                      className={`absolute inset-0 ${
+                        tx.status === "completed"
+                          ? "bg-green-500"
+                          : "bg-red-500"
+                      } opacity-0 animate-status-flash pointer-events-none`}
+                    />
+                  )}
+
+                  <div className="flex-1 mr-4 relative z-10">
                     <div className="font-mono text-sm sm:text-base truncate">
                       {tx.status === "completed" && tx.txid ? (
                         <a
@@ -788,18 +869,30 @@ function App() {
                       {(tx.recipients[0]?.amount ?? 0) === 1 ? "sat" : "sats"}
                     </div>
                   </div>
-                  <div className="flex items-center">
+                  <div className="flex items-center relative z-10">
                     {tx.status === "pending" && (
-                      <RefreshCw className="w-5 h-5 animate-spin text-yellow-500" />
+                      <div className="relative">
+                        <RefreshCw className="w-5 h-5 animate-spin text-yellow-500" />
+                        <div className="absolute inset-0 bg-yellow-500 opacity-20 animate-pulse rounded-full" />
+                      </div>
                     )}
                     {tx.status === "processing" && (
-                      <RefreshCw className="w-5 h-5 animate-spin text-blue-500" />
+                      <div className="relative">
+                        <RefreshCw className="w-5 h-5 animate-spin text-blue-500" />
+                        <div className="absolute inset-0 bg-blue-500 opacity-20 animate-pulse rounded-full" />
+                      </div>
                     )}
                     {tx.status === "completed" && (
-                      <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+                      <div className="relative">
+                        <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                        <div className="absolute inset-0 bg-green-500 opacity-20 animate-success-pulse rounded-full" />
+                      </div>
                     )}
                     {tx.status === "failed" && (
-                      <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                      <div className="relative">
+                        <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                        <div className="absolute inset-0 bg-red-500 opacity-20 animate-fail-pulse rounded-full" />
+                      </div>
                     )}
                   </div>
                 </div>
@@ -850,8 +943,6 @@ export interface ThemeConfig {
   glass: string;
   logo: string;
 }
-
-type Theme = "aqua" | "rainbow" | "accessibility";
 
 const themes: Record<Theme, ThemeConfig> = {
   aqua: {

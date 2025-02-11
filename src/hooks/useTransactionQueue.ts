@@ -13,15 +13,17 @@ import type {
   UseTransactionQueueReturn,
 } from "../types/index";
 import { logger } from "../utils/logger";
-import { fetchTransactionHex } from "../services/api";
+import { fetchTransactionHex, fetchUtxos } from "../services/api";
 import { supabaseClient } from "../supabaseClient";
 
 const MIN_FEE_RATE = 0.5; // 0.5 sats/kb minimum fee rate
 const SQUIRT_PREFIX = "SQUIRTINGSATS:::v1";
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 500; // 0.5 seconds between retries
-const BROADCAST_VERIFY_WAIT = 1500; // 1.5 seconds for verification
 const INTER_TX_DELAY = 500; // 0.5 seconds between transactions
+
+// Helper to wait between retries
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Helper to create OP_RETURN script with support for longer messages
 const createSquirtOpReturn = (username?: string, isPromo: boolean = false) => {
@@ -52,23 +54,6 @@ const createSquirtOpReturn = (username?: string, isPromo: boolean = false) => {
   return Script.fromASM(`OP_FALSE OP_RETURN ${chunks[0]}`);
 };
 
-// Helper to verify transaction broadcast
-const verifyBroadcast = async (txid: string): Promise<boolean> => {
-  try {
-    // Try to fetch the transaction from WhatsOnChain
-    const response = await fetch(
-      `https://api.whatsonchain.com/v1/bsv/main/tx/${txid}`
-    );
-    return response.ok;
-  } catch (error) {
-    logger.error("Failed to verify transaction:", error);
-    return false;
-  }
-};
-
-// Helper to wait between retries
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 export function useTransactionQueue({
   privateKey,
   sourceAddress,
@@ -83,7 +68,8 @@ export function useTransactionQueue({
     (
       recipients: TransactionRecipient[],
       username?: string,
-      isPromo?: boolean
+      isPromo?: boolean,
+      timestamp?: number
     ): QueuedTransaction => {
       const id = crypto.randomUUID();
       const newTransaction: QueuedTransaction = {
@@ -93,6 +79,7 @@ export function useTransactionQueue({
         progress: 0,
         username,
         isPromo,
+        timestamp: timestamp || Date.now(),
       };
 
       setQueuedTransactions((prev) => [...prev, newTransaction]);
@@ -111,7 +98,11 @@ export function useTransactionQueue({
   );
 
   const processTransaction = useCallback(
-    async (transaction: QueuedTransaction): Promise<void> => {
+    async (
+      transaction: QueuedTransaction & {
+        preFetchedUtxos?: Awaited<ReturnType<typeof fetchUtxos>>;
+      }
+    ): Promise<void> => {
       if (!transaction) {
         logger.error("No transaction provided to process");
         return;
@@ -128,8 +119,9 @@ export function useTransactionQueue({
             error: undefined,
           });
 
-          // Fetch fresh UTXOs each attempt
-          const utxos = await fetchUtxos(sourceAddress);
+          // Use pre-fetched UTXOs if available, otherwise fetch fresh ones
+          const utxos =
+            transaction.preFetchedUtxos || (await fetchUtxos(sourceAddress));
           if (utxos.length === 0) {
             throw new Error("No confirmed UTXOs available");
           }
@@ -225,62 +217,180 @@ export function useTransactionQueue({
 
           updateTransaction(transaction.id, { progress: 80 });
 
-          // Sign and broadcast
-          await tx.sign();
-          const result = await tx.broadcast();
-
-          if (!result) {
-            throw new Error("Broadcast failed - no result returned");
-          }
-
-          const txid = result.txid || result.toString();
-
-          // Wait briefly and verify the transaction was actually broadcast
-          await wait(BROADCAST_VERIFY_WAIT);
-          const isVerified = await verifyBroadcast(txid);
-
-          if (!isVerified) {
-            throw new Error("Transaction verification failed");
-          }
-
-          logger.info("Transaction broadcast success and verified:", {
-            txid,
-            fee: currentFee,
-            inputs: inputsAdded,
-            totalInput,
-            totalOutput,
-            change: changeAmount,
-            retryCount,
+          // Sign and broadcast with proper error handling
+          updateTransaction(transaction.id, {
+            status: "processing",
+            progress: 80,
+            error: undefined,
           });
 
-          // Only insert into Supabase if we've verified the transaction
-          const { error: dbError } = await supabaseClient
-            .from("squirts")
-            .insert({
-              sender_address: sourceAddress,
-              username: transaction.username || "anon",
-              amount: transaction.recipients[0]?.amount || 0,
+          try {
+            // Sign first
+            await tx.sign();
+
+            // Skip verification since we have all source transactions
+            // The verify() function is failing because it expects merkle proofs
+            // which we don't need for broadcasting transactions
+
+            updateTransaction(transaction.id, {
+              status: "processing",
+              progress: 90,
+              error: undefined,
+            });
+
+            // Broadcast with retry logic
+            let broadcastError: Error | null = null;
+            let result = null;
+
+            for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+              try {
+                result = await tx.broadcast();
+                if (result) {
+                  const txid = result.txid || result.toString();
+                  logger.info(`Transaction broadcast success, txid: ${txid}`);
+
+                  // Wait longer for propagation with each retry
+                  const waitTime = 2000 * (attempt + 1); // 2s, 4s, 6s
+                  await wait(waitTime);
+
+                  // Verify using multiple methods
+                  try {
+                    // Method 1: Check UTXOs
+                    const newUtxos = await fetchUtxos(sourceAddress);
+                    const changeUtxo = newUtxos.find(
+                      (utxo) => utxo.tx_hash === txid
+                    );
+
+                    // Method 2: Try to fetch the transaction hex
+                    let txHex: string | null = null;
+                    try {
+                      txHex = await fetchTransactionHex(txid);
+                    } catch (error) {
+                      logger.warn("Failed to fetch transaction hex:", error);
+                    }
+
+                    if (changeUtxo || txHex) {
+                      logger.info("Transaction verified via UTXO or hex fetch");
+                      broadcastError = null;
+                      break;
+                    }
+
+                    logger.warn(
+                      `Transaction ${txid} not yet found in UTXO set or hex fetch. Attempt ${
+                        attempt + 1
+                      }/${MAX_RETRIES}`
+                    );
+                    broadcastError = new Error(
+                      "Transaction not yet propagated"
+                    );
+                  } catch (verifyErr) {
+                    logger.warn(
+                      `Verification attempt ${attempt + 1} failed:`,
+                      verifyErr
+                    );
+                    broadcastError = verifyErr as Error;
+                  }
+                } else {
+                  broadcastError = new Error("Broadcast returned no result");
+                }
+              } catch (err) {
+                broadcastError = err as Error;
+                logger.error(`Broadcast attempt ${attempt + 1} failed:`, err);
+              }
+
+              if (attempt < MAX_RETRIES - 1 && broadcastError) {
+                const retryDelay = RETRY_DELAY * Math.pow(2, attempt);
+                logger.info(
+                  `Broadcast/verify attempt ${
+                    attempt + 1
+                  } failed, retrying after ${retryDelay}ms...`
+                );
+                await wait(retryDelay);
+              }
+            }
+
+            if (broadcastError || !result) {
+              throw (
+                broadcastError ||
+                new Error("Broadcast failed after all retries")
+              );
+            }
+
+            const txid = result.txid || result.toString();
+
+            // Transaction was successfully broadcast and verified
+            logger.info("Transaction broadcast success and verified:", {
+              txid,
+              fee: currentFee,
+              inputs: inputsAdded,
+              totalInput,
+              totalOutput,
+              change: changeAmount,
+              retryCount,
+            });
+
+            // Update transaction status to completed
+            updateTransaction(transaction.id, {
+              status: "completed",
+              progress: 100,
               txid,
             });
 
-          if (dbError) {
-            logger.error("❌ Failed to record squirt in Supabase:", dbError);
-          } else {
-            logger.info("✅ Successfully recorded squirt in Supabase");
-            onSquirtComplete?.({
-              sender_address: sourceAddress,
-              username: transaction.username || "anon",
-              amount: transaction.recipients[0]?.amount || 0,
+            // Only record in Supabase if we verified the broadcast
+            let dbSuccess = false;
+            for (
+              let attempt = 0;
+              attempt < MAX_RETRIES && !dbSuccess;
+              attempt++
+            ) {
+              try {
+                const { error: dbError } = await supabaseClient
+                  .from("squirts")
+                  .insert({
+                    sender_address: sourceAddress,
+                    username: transaction.username || "anon",
+                    amount: transaction.recipients[0]?.amount || 0,
+                    txid,
+                  });
+
+                if (!dbError) {
+                  dbSuccess = true;
+                  logger.info("✅ Successfully recorded squirt in Supabase");
+                  onSquirtComplete?.({
+                    sender_address: sourceAddress,
+                    username: transaction.username || "anon",
+                    amount: transaction.recipients[0]?.amount || 0,
+                  });
+                } else {
+                  throw dbError;
+                }
+              } catch (dbError) {
+                logger.error(
+                  `❌ Database recording attempt ${attempt + 1} failed:`,
+                  dbError
+                );
+                if (attempt < MAX_RETRIES - 1) {
+                  await wait(RETRY_DELAY * Math.pow(2, attempt)); // Exponential backoff
+                }
+              }
+            }
+
+            if (!dbSuccess) {
+              logger.error(
+                "❌ Failed to record squirt in Supabase after all retries"
+              );
+            }
+
+            success = true;
+          } catch (error) {
+            // Handle transaction-specific errors
+            updateTransaction(transaction.id, {
+              status: "failed",
+              progress: 0,
+              error: error instanceof Error ? error.message : "Unknown error",
             });
+            throw error;
           }
-
-          updateTransaction(transaction.id, {
-            status: "completed",
-            progress: 100,
-            txid,
-          });
-
-          success = true;
         } catch (error) {
           logger.error(`Transaction attempt ${retryCount + 1} failed:`, error);
 
@@ -315,19 +425,99 @@ export function useTransactionQueue({
       (tx) => tx.status === "pending"
     );
 
-    // Process transactions sequentially with delay between each
-    for (const transaction of pendingTransactions) {
-      try {
-        await processTransaction(transaction);
-        // Add a small delay between transactions to allow UTXOs to propagate
-        await wait(INTER_TX_DELAY);
-      } catch (error) {
-        logger.error("Failed to process transaction:", error);
-        // Continue with next transaction instead of breaking
-        await wait(INTER_TX_DELAY * 2); // Wait longer after an error
+    if (pendingTransactions.length === 0) return;
+
+    try {
+      // Fetch UTXOs once for all transactions
+      const allUtxos = await fetchUtxos(sourceAddress);
+      if (allUtxos.length === 0) {
+        throw new Error("No confirmed UTXOs available");
       }
+
+      // Sort UTXOs by value (largest first)
+      const sortedUtxos = [...allUtxos].sort((a, b) => b.value - a.value);
+
+      // Calculate how many UTXOs we need per transaction (estimate 1 UTXO per tx for now)
+      // We'll need at least enough to cover 1 sat + fees per transaction
+      const estimatedFeePerTx = 300; // Conservative estimate
+      const minPerTx = 1 + estimatedFeePerTx; // 1 sat + fees
+
+      // Calculate total needed
+      const totalNeeded = pendingTransactions.length * minPerTx;
+      const totalAvailable = sortedUtxos.reduce(
+        (sum, utxo) => sum + utxo.value,
+        0
+      );
+
+      if (totalAvailable < totalNeeded) {
+        throw new Error(
+          `Insufficient funds for all transactions: need ~${totalNeeded} sats, have ${totalAvailable} sats`
+        );
+      }
+
+      // Divide UTXOs among transactions
+      let currentUtxoIndex = 0;
+      const txUtxoMap = new Map();
+
+      for (const tx of pendingTransactions) {
+        const txUtxos = [];
+        let txTotal = 0;
+
+        // Add UTXOs until we have enough for this transaction
+        while (txTotal < minPerTx && currentUtxoIndex < sortedUtxos.length) {
+          const utxo = sortedUtxos[currentUtxoIndex];
+          txUtxos.push(utxo);
+          txTotal += utxo.value;
+          currentUtxoIndex++;
+        }
+
+        if (txTotal < minPerTx) {
+          throw new Error("Not enough UTXOs to allocate for all transactions");
+        }
+
+        txUtxoMap.set(tx.id, txUtxos);
+      }
+
+      // Process all transactions in parallel with their dedicated UTXOs
+      await Promise.all(
+        pendingTransactions.map(async (transaction) => {
+          try {
+            const dedicatedUtxos = txUtxoMap.get(transaction.id);
+            if (!dedicatedUtxos) {
+              throw new Error("No UTXOs allocated for transaction");
+            }
+
+            const modifiedTransaction = {
+              ...transaction,
+              preFetchedUtxos: dedicatedUtxos,
+            };
+            await processTransaction(modifiedTransaction);
+          } catch (error) {
+            logger.error("Failed to process transaction:", error);
+            updateTransaction(transaction.id, {
+              status: "failed",
+              error: error instanceof Error ? error.message : "Unknown error",
+            });
+          }
+        })
+      );
+    } catch (error) {
+      logger.error("Error processing transaction queue:", error);
+      // Mark all pending transactions as failed
+      pendingTransactions.forEach((tx) => {
+        updateTransaction(tx.id, {
+          status: "failed",
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      });
     }
-  }, [queuedTransactions, processTransaction]);
+  }, [
+    queuedTransactions,
+    processTransaction,
+    sourceAddress,
+    fetchUtxos,
+    updateTransaction,
+  ]);
 
   const clearCompleted = useCallback(() => {
     setQueuedTransactions((prev) =>
