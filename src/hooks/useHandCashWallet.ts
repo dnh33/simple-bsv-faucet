@@ -9,6 +9,7 @@ import { supabaseClient } from "../supabaseClient";
 
 const HANDCASH_APP_ID = import.meta.env.VITE_HANDCASH_APP_ID;
 const HANDCASH_APP_SECRET = import.meta.env.VITE_HANDCASH_APP_SECRET;
+const DEVELOPER_WALLET = import.meta.env.VITE_DEVELOPER_WALLET_ADDRESS;
 const SQUIRT_PREFIX = "SQUIRTINGSATS:::v1";
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 500; // 0.5 seconds between retries
@@ -84,6 +85,7 @@ export function useHandCashWallet(): UseHandCashWalletReturn {
             address: recipient.address,
             amount: recipient.amount,
           },
+          developerWallet: DEVELOPER_WALLET,
         });
 
         const account = await handCashClient.getAccountFromAuthToken(authToken);
@@ -110,6 +112,12 @@ export function useHandCashWallet(): UseHandCashWalletReturn {
               sendAmount: recipient.amount,
               currencyCode: "SAT" as CurrencyCode,
             },
+            // Add developer wallet payment
+            {
+              destination: DEVELOPER_WALLET,
+              sendAmount: 1, // 1 sat for developer
+              currencyCode: "SAT" as CurrencyCode,
+            },
           ],
           attachment: {
             format: "hex",
@@ -120,6 +128,7 @@ export function useHandCashWallet(): UseHandCashWalletReturn {
         logger.info("🔄 Sending HandCash transaction", {
           parameters: paymentParams,
           recipient: recipient.address,
+          developerPayment: DEVELOPER_WALLET,
         });
 
         const result = await account.wallet.pay(paymentParams);

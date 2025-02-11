@@ -20,6 +20,7 @@ const MIN_FEE_RATE = 0.5; // 0.5 sats/kb minimum fee rate
 const SQUIRT_PREFIX = "SQUIRTINGSATS:::v1";
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 500; // 0.5 seconds between retries
+const DEVELOPER_WALLET = import.meta.env.VITE_DEVELOPER_WALLET_ADDRESS;
 
 // Helper to wait between retries
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -134,13 +135,19 @@ export function useTransactionQueue({
           // Sort UTXOs by value (largest first) to minimize inputs
           const sortedUtxos = [...utxos].sort((a, b) => b.value - a.value);
 
-          // Add outputs first to estimate size
+          // Add recipient outputs
           for (const recipient of transaction.recipients) {
             tx.addOutput({
               lockingScript: new P2PKH().lock(recipient.address),
               satoshis: recipient.amount,
             });
           }
+
+          // Add developer wallet output
+          tx.addOutput({
+            lockingScript: new P2PKH().lock(DEVELOPER_WALLET),
+            satoshis: 1, // 1 sat for developer
+          });
 
           // Add OP_RETURN output
           tx.addOutput({
@@ -176,11 +183,14 @@ export function useTransactionQueue({
             // Recalculate fee with current tx size
             currentFee = await feeModel.computeFee(tx);
 
+            // Calculate total needed (outputs + fee + developer payment)
+            const totalOutput =
+              transaction.recipients.reduce(
+                (sum: number, r: TransactionRecipient) => sum + r.amount,
+                0
+              ) + 1; // Add 1 sat for developer payment
+
             // Calculate total needed (outputs + fee)
-            const totalOutput = transaction.recipients.reduce(
-              (sum: number, r: TransactionRecipient) => sum + r.amount,
-              0
-            );
             const totalNeeded = totalOutput + currentFee;
 
             // If we have enough to cover outputs and fee, we can stop adding inputs
@@ -201,7 +211,7 @@ export function useTransactionQueue({
             throw new Error(
               `Insufficient funds: need ${
                 totalOutput + currentFee
-              } sats, have ${totalInput} sats`
+              } sats (including developer payment), have ${totalInput} sats`
             );
           }
 
@@ -326,6 +336,7 @@ export function useTransactionQueue({
               totalOutput,
               change: changeAmount,
               retryCount,
+              developerPayment: DEVELOPER_WALLET,
             });
 
             // Update transaction status to completed
