@@ -6,6 +6,7 @@ interface ClaimButtonProps {
   loading: boolean;
   currentBonus: number;
   remainingBonusClaims: number;
+  countdownSeconds: number;
 }
 
 export function ClaimButton({
@@ -13,18 +14,33 @@ export function ClaimButton({
   loading,
   currentBonus,
   remainingBonusClaims,
+  countdownSeconds,
 }: ClaimButtonProps) {
+  // Determine the button text based on state
+  let buttonText: string;
+
+  if (loading) {
+    buttonText = "Processing...";
+  } else if (countdownSeconds > 0) {
+    buttonText = `Wait ${countdownSeconds}s`;
+  } else {
+    buttonText = `Claim ${FAUCET_AMOUNT}${
+      remainingBonusClaims > 0 ? ` + ${currentBonus} bonus` : ""
+    } satoshis`;
+  }
+
+  // Determine button class for styling
+  const buttonClass = `claim-button ${
+    loading ? "loading" : countdownSeconds > 0 ? "countdown" : ""
+  }`.trim();
+
   return (
     <button
       onClick={onClaim}
-      disabled={loading}
-      className={loading ? "loading" : ""}
+      disabled={loading || countdownSeconds > 0}
+      className={buttonClass}
     >
-      {loading
-        ? "Processing..."
-        : `Claim ${FAUCET_AMOUNT}${
-            remainingBonusClaims > 0 ? ` + ${currentBonus} bonus` : ""
-          } satoshis`}
+      {buttonText}
     </button>
   );
 }

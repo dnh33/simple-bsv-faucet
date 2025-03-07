@@ -1,0 +1,17 @@
+{
+  "name": "bsv-faucet-lambda",
+  "version": "1.0.0",
+  "description": "BSV Faucet Lambda Function",
+  "main": "index.mjs",
+  "type": "module",
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@bsv/sdk": "^1.3.9",
+    "@bsv/wallet-toolbox": "^1.1.60",
+    "node-fetch": "^2.6.7"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}

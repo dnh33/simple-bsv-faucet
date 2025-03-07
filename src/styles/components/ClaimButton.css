@@ -1,11 +1,8 @@
 .claim-button {
   width: 100%;
   padding: var(--spacing-4);
-  background: linear-gradient(
-    135deg,
-    var(--color-primary),
-    var(--color-secondary)
-  );
+  background: linear-gradient(135deg, #8a2be2, #9370db, #6a5acd, #483d8b);
+  background-size: 300% 300%;
   border: none;
   border-radius: var(--radius-lg);
   color: white;
@@ -15,11 +12,23 @@
   transition: all var(--transition-fast);
   position: relative;
   overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  animation: gradientShift 8s ease infinite;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .claim-button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  animation: gradientShift 4s ease infinite;
+}
+
+.claim-button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .claim-button:disabled {
@@ -41,6 +50,7 @@
     transparent
   );
   transition: 0.5s;
+  z-index: 1;
 }
 
 .claim-button:hover::before {
@@ -48,7 +58,16 @@
 }
 
 .claim-button.loading {
-  animation: loading-pulse 1.5s ease-in-out infinite;
+  animation: loading-pulse 1.5s ease-in-out infinite,
+    gradientShift 8s ease infinite;
+}
+
+.claim-button.countdown {
+  background: linear-gradient(135deg, #8a2be2, #9370db, #6a5acd, #483d8b);
+  background-size: 300% 300%;
+  animation: countdown-pulse 1s ease-in-out infinite,
+    gradientShift 8s ease infinite;
+  position: relative;
 }
 
 @keyframes loading-pulse {
@@ -57,6 +76,30 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.5;
+    opacity: 0.7;
+  }
+}
+
+@keyframes countdown-pulse {
+  0% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
   }
 }
