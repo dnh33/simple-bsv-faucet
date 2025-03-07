@@ -1,16 +1,24 @@
-[[redirects]]
-from = "/*"
-to = "/index.html"
-status = 200
+[build]
+  command = "chmod +x netlify-build.sh && ./netlify-build.sh"
+  publish = "dist"
 
-# Add security headers
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_FLAGS = "--no-optional"
+
 [[headers]]
-for = "/*"
-[headers.values]
-X-Frame-Options = "DENY"
-X-XSS-Protection = "1; mode=block"
-X-Content-Type-Options = "nosniff"
-Referrer-Policy = "strict-origin-when-cross-origin"
-Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' *.push-the-button.app *.netlify.app *.cloudflareinsights.com; style-src 'self' 'unsafe-inline' *.push-the-button.app *.netlify.app; img-src 'self' data: blob: *.push-the-button.app *.netlify.app; connect-src 'self' *.push-the-button.app *.netlify.app api.bittails.io api.whatsonchain.com https://arc.taal.com/v1/tx https://api.bitails.io *.cloudflareinsights.com; font-src 'self' *.push-the-button.app *.netlify.app; frame-ancestors 'none';"
-Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
-Permissions-Policy = "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), cross-origin-isolated=(), display-capture=(), document-domain=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), navigation-override=(), payment=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), gamepad=(), speaker-selection=(), conversion-measurement=(), focus-without-user-activation=(), hid=(), idle-detection=(), interest-cohort=(), serial=(), trust-token-redemption=(), window-placement=(), vertical-scroll=()"
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' *.push-the-button.app *.netlify.app *.cloudflareinsights.com; style-src 'self' 'unsafe-inline' *.push-the-button.app *.netlify.app; img-src 'self' data: blob: *.push-the-button.app *.netlify.app; connect-src 'self' *.push-the-button.app *.netlify.app api.bittails.io api.whatsonchain.com https://arc.taal.com/v1/tx https://api.bitails.io https://1yf0t1mwr1.execute-api.us-east-2.amazonaws.com *.execute-api.us-east-2.amazonaws.com *.cloudflareinsights.com; font-src 'self' *.push-the-button.app *.netlify.app; frame-ancestors 'none';"
+    Permissions-Policy = "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), cross-origin-isolated=(), display-capture=(), document-domain=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), navigation-override=(), payment=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), gamepad=(), speaker-selection=(), conversion-measurement=(), focus-without-user-activation=(), hid=(), idle-detection=(), interest-cohort=(), serial=(), trust-token-redemption=(), window-placement=(), vertical-scroll=()"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+
+# Handle SPA routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
