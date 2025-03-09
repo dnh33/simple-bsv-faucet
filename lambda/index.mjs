@@ -288,8 +288,7 @@ async function broadcastTxSafely(tx) {
       console.log("WhatsOnChain broadcast successful, txid:", txid);
 
       // Return the txid in the format expected by the calling code
-      // Strip any surrounding quotes from the txid
-      return { txid: txid.replace(/^"(.*)"$/, "$1") };
+      return { txid };
     }
 
     // If it's not a crypto error, rethrow
@@ -536,10 +535,7 @@ export const handler = async (event) => {
       throw new Error("Failed to broadcast transaction");
     }
 
-    // Ensure the txid is properly formatted (strip any quotes)
-    const txid = result.txid
-      ? result.txid.replace(/^"(.*)"$/, "$1")
-      : result.toString();
+    const txid = result.txid || result.toString();
     console.log(`Transaction broadcast success: ${txid}`);
 
     // Record this claim for rate limiting
