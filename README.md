@@ -22,11 +22,76 @@ A modern, responsive Bitcoin SV (BSV) faucet built with React, TypeScript, and t
 - ⚡ Real-time balance updates
 - 🔄 Automatic UTXO management
 - 🛡️ Type-safe BSV operations with @bsv/sdk
+- 🔐 Secure AWS Lambda deployment option for backend operations
 
+## Secure Deployment with AWS Lambda
+
+This project supports a secure deployment model using AWS Lambda for handling sensitive operations. This approach offers several advantages:
+
+### Why Use AWS Lambda?
+
+- 🔒 **Enhanced Security**: Private keys never exposed to client-side code
+- 🛡️ **Server-Side Rate Limiting**: More robust protection against abuse
+- 📈 **Scalability**: Handles traffic spikes without manual intervention
+- 💰 **Cost-Effective**: Pay only for the compute time you use (1 million free requests every month)
+- 🌐 **Global Availability**: Deploy to any AWS region for reduced latency
+
+### Lambda Function Setup
+
+1. **Create Lambda Function**:
+
+   - Sign in to AWS Management Console
+   - Navigate to Lambda service
+   - Click "Create function"
+   - Select "Author from scratch"
+   - Name your function (e.g., `bsv-faucet-service`)
+   - Choose Node.js 18.x or higher as runtime
+   - Create a new execution role with basic Lambda permissions
+
+2. **Deploy Lambda Code**:
+
+   - Zip the contents of the `lambda` directory:
+     ```bash
+     cd lambda
+     zip -r function.zip index.mjs package.json
+     ```
+   - Upload the zip file to your Lambda function
+
+3. **Configure Environment Variables**:
+
+   - Add the following environment variables to your Lambda function:
+     ```
+     FAUCET_PRIVATE_KEY=your_private_key_in_wif_format
+     FAUCET_AMOUNT=1000
+     FAUCET_IDENTIFIER=your_faucet_identifier
+     MIN_TIME_BETWEEN_CLAIMS=3000
+     ```
+
+4. **Create API Gateway**:
+
+   - Create a new API in API Gateway (REST API)
+   - Add a new resource with a POST method
+   - Set the integration type to "Lambda Function"
+   - Select your Lambda function
+   - Enable CORS with appropriate settings
+   - Deploy the API to a stage (e.g., `prod`)
+
+5. **Update Frontend Configuration**:
+   - In your frontend code, update the API endpoint to point to your API Gateway URL
+   - Example: `https://your-api-id.execute-api.region.amazonaws.com/stage/resource`
+
+### Lambda Function Features
+
+- Multiple UTXO source fallbacks (WhatsOnChain, Bitails)
+- Robust error handling and logging
+- In-memory caching for rate limiting
+- Low fee transactions (0.5 satoshis/kilobyte)
+- Configurable faucet amount and claim frequency
 
 ## Quick Start
 
 ### Deploy to Netlify
+
 [![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/dnh33/simple-bsv-faucet)
 
 1. Click the "Deploy to Netlify" button above
@@ -96,10 +161,16 @@ lockingScript: new Script([
 
 ⚠️ **Important Security Notes:**
 
-1. Never expose your private key in client-side code in production
-2. Consider implementing server-side rate limiting for production use
-3. Test thoroughly on testnet before deploying to mainnet
-4. Monitor your faucet balance and set up alerts
+1. **NEVER expose your private key in client-side code in production**
+   - **RECOMMENDED**: Use the AWS Lambda approach described above
+   - The Lambda function keeps private keys secure on the server side
+2. **Rate limiting is essential**
+   - Client-side rate limiting can be bypassed
+   - The Lambda implementation provides more robust server-side rate limiting
+3. **Testing and monitoring**
+   - Test thoroughly on testnet before deploying to mainnet
+   - Monitor your faucet balance and set up alerts
+   - Review AWS CloudWatch logs for any suspicious activity
 
 ## Customization
 
@@ -140,4 +211,3 @@ If you find this project helpful, consider donating to: 1KaMouXsastUR5kdoiWUaHmp
 ---
 
 Built with ❤️ for the Bitcoin community
-
