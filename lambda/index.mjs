@@ -254,42 +254,41 @@ async function broadcastTxSafely(tx) {
       error.message.includes("secure random") ||
       error.message.includes("crypto")
     ) {
-      console.log("Using custom ARC broadcaster implementation...");
-
-      // Generate our own deployment ID without relying on the problematic crypto
-      const deploymentId = generateDeploymentId();
-      console.log(`Generated deployment ID: ${deploymentId}`);
+      console.log("Using custom WhatsOnChain broadcaster implementation...");
 
       // Get the signed transaction hex
       const signedHex = tx.toHex();
       console.log(`Signed transaction hex length: ${signedHex.length}`);
 
-      // Create a POST request to the ARC API directly
-      const arcUrl = "https://api.taal.com/arc";
-      console.log(`Sending transaction directly to ARC API: ${arcUrl}`);
+      // Create a POST request to the WhatsOnChain API
+      const wocBroadcastUrl = `${WOC_API_URL}/tx/raw`;
+      console.log(
+        `Sending transaction to WhatsOnChain API: ${wocBroadcastUrl}`
+      );
 
-      const response = await fetch(arcUrl, {
+      const response = await fetch(wocBroadcastUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-BSV-DEPLOY-ID": deploymentId,
         },
         body: JSON.stringify({
-          hex: signedHex,
-          encoding: "hex",
+          txhex: signedHex,
         }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`ARC API error (${response.status}): ${errorText}`);
+        throw new Error(
+          `WhatsOnChain API error (${response.status}): ${errorText}`
+        );
       }
 
-      const result = await response.json();
-      console.log("ARC broadcast result:", result);
+      // WhatsOnChain returns txid directly as text
+      const txid = await response.text();
+      console.log("WhatsOnChain broadcast successful, txid:", txid);
 
       // Return the txid in the format expected by the calling code
-      return { txid: result.txid || result.txid };
+      return { txid };
     }
 
     // If it's not a crypto error, rethrow
@@ -397,7 +396,7 @@ export const handler = async (event) => {
     }
 
     // Check if we have at least enough for the minimum viable transaction
-    const minimumRequired = FAUCET_AMOUNT + 500; // 500 satoshis as minimum fee buffer
+    const minimumRequired = FAUCET_AMOUNT + 1; // 1 satoshi as minimum fee buffer
     if (totalAvailable < minimumRequired) {
       console.log(
         `Insufficient funds for transaction: ${totalAvailable} < ${minimumRequired}`
@@ -429,8 +428,8 @@ export const handler = async (event) => {
       inputSum += utxo.satoshis;
 
       // If we have enough inputs to cover the send amount plus a reasonable fee, stop adding inputs
-      if (inputSum >= FAUCET_AMOUNT + 500) {
-        // 500 satoshis as a buffer for fees
+      if (inputSum >= FAUCET_AMOUNT + 1) {
+        // 1 satoshi as a buffer for fees
         break;
       }
     }
