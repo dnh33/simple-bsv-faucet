@@ -1,13 +1,13 @@
-const {
+import {
   Transaction,
   P2PKH,
   Script,
   SatoshisPerKilobyte,
   OP,
   PrivateKey,
-} = require("@bsv/sdk");
-const { Wallet } = require("@bsv/wallet-toolbox");
-const fetch = require("node-fetch");
+} from "@bsv/sdk";
+import fetch from "node-fetch";
+import crypto from "crypto";
 
 // Constants
 const FAUCET_AMOUNT = parseInt(process.env.FAUCET_AMOUNT, 10);
@@ -19,10 +19,10 @@ const MIN_TIME_BETWEEN_CLAIMS = parseInt(
 );
 const WOC_API_URL = "https://api.whatsonchain.com/v1/bsv/main";
 
-// In-memory cache for rate limiting (will reset on Lambda cold start)
+// In-memory cache for rate limiting
 const recentClaims = {};
 
-// Rate limiting function with time-based constraints
+// Rate limiting function
 function isRateLimited(address, ipAddress) {
   const now = Date.now();
   const addressKey = `addr_${address}`;
@@ -73,7 +73,7 @@ function isRateLimited(address, ipAddress) {
   return { limited: false };
 }
 
-// Record a successful claim to implement rate limiting
+// Record a claim
 function recordClaim(address, ipAddress) {
   const now = Date.now();
   recentClaims[`addr_${address}`] = now;
@@ -84,20 +84,15 @@ function recordClaim(address, ipAddress) {
 }
 
 // Lambda handler
-exports.handler = async (event) => {
-  console.log("Received event:", JSON.stringify(event));
-
-  // Get the client IP address
-  const ipAddress = event.requestContext?.identity?.sourceIp || null;
-
-  // Set up CORS headers
+export const handler = async (event) => {
+  // CORS headers
   const headers = {
-    "Access-Control-Allow-Origin": "*", // Update to restrict to your domain in production
+    "Access-Control-Allow-Origin": "https://www.push-the-button.app",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
   };
 
-  // Handle preflight OPTIONS request
+  // Handle OPTIONS
   if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 200,
@@ -107,10 +102,12 @@ exports.handler = async (event) => {
   }
 
   try {
-    // Parse the request body
+    // Parse request
     const body = JSON.parse(event.body || "{}");
     const recipientAddress = body.address;
+    const ipAddress = event.requestContext?.identity?.sourceIp || null;
 
+    // Validation
     if (!recipientAddress) {
       return {
         statusCode: 400,
@@ -119,7 +116,7 @@ exports.handler = async (event) => {
       };
     }
 
-    // Check rate limits
+    // Rate limiting
     const rateLimitCheck = isRateLimited(recipientAddress, ipAddress);
     if (rateLimitCheck.limited) {
       return {
@@ -132,20 +129,22 @@ exports.handler = async (event) => {
       };
     }
 
-    // Initialize wallet
+    // Get private key and address
     const privateKey = PrivateKey.fromWif(FAUCET_PRIVATE_KEY);
     const faucetAddress = privateKey.toAddress().toString();
-    console.log(`Using faucet address: ${faucetAddress}`);
 
-    // Initialize wallet toolbox
-    const wallet = new Wallet({ chain: "main" });
+    // Fetch UTXOs directly from WhatsOnChain API
+    const utxoResponse = await fetch(
+      `${WOC_API_URL}/address/${faucetAddress}/unspent`
+    );
 
-    // Fetch UTXOs using wallet-toolbox
-    console.log(`Fetching UTXOs for address: ${faucetAddress}`);
-    const utxos = await wallet.listUnspent(faucetAddress);
-    console.log(`Found ${utxos.length} UTXOs`);
+    if (!utxoResponse.ok) {
+      throw new Error(`Failed to fetch UTXOs: ${utxoResponse.statusText}`);
+    }
 
-    if (utxos.length === 0) {
+    const utxos = await utxoResponse.json();
+
+    if (!utxos || utxos.length === 0) {
       return {
         statusCode: 503,
         headers,
@@ -153,11 +152,10 @@ exports.handler = async (event) => {
       };
     }
 
-    // Calculate total available satoshis
-    const totalAvailable = utxos.reduce((sum, utxo) => sum + utxo.satoshis, 0);
-    console.log(`Total available: ${totalAvailable} satoshis`);
+    // Calculate total available
+    const totalAvailable = utxos.reduce((sum, utxo) => sum + utxo.value, 0);
 
-    if (totalAvailable < FAUCET_AMOUNT) {
+    if (totalAvailable < FAUCET_AMOUNT + 500) {
       return {
         statusCode: 503,
         headers,
@@ -168,93 +166,53 @@ exports.handler = async (event) => {
     // Create transaction
     const tx = new Transaction();
 
-    // Sort UTXOs by value (ascending)
-    utxos.sort((a, b) => a.satoshis - b.satoshis);
-
-    // Use only the necessary UTXOs, starting from smallest
+    // Select inputs
+    utxos.sort((a, b) => a.value - b.value);
     let inputSum = 0;
     let usedUtxos = [];
 
     for (const utxo of utxos) {
+      if (inputSum >= FAUCET_AMOUNT + 500) break;
+
       usedUtxos.push(utxo);
-      inputSum += utxo.satoshis;
-
-      // If we have enough inputs to cover the send amount plus a reasonable fee, stop adding inputs
-      if (inputSum >= FAUCET_AMOUNT + 500) {
-        // 500 satoshis as a buffer for fees
-        break;
-      }
+      inputSum += utxo.value;
     }
 
-    // Add inputs from selected UTXOs
+    // Add inputs
     for (const utxo of usedUtxos) {
-      try {
-        // Fetch the source transaction
-        const txResponse = await fetch(`${WOC_API_URL}/tx/${utxo.txid}/hex`);
-        if (!txResponse.ok) {
-          throw new Error(
-            `Failed to fetch source transaction: ${txResponse.statusText}`
-          );
-        }
+      const txResponse = await fetch(`${WOC_API_URL}/tx/${utxo.tx_hash}/hex`);
+      const hexString = await txResponse.text();
+      const sourceTransaction = Transaction.fromHex(hexString);
 
-        const hexString = await txResponse.text();
-        const sourceTransaction = Transaction.fromHex(hexString);
-
-        tx.addInput({
-          sourceTransaction,
-          sourceOutputIndex: utxo.vout,
-          unlockingScriptTemplate: new P2PKH().unlock(privateKey),
-        });
-      } catch (err) {
-        console.error("Error adding input:", err);
-        throw new Error(
-          `Failed to add input: ${
-            err instanceof Error ? err.message : "Unknown error"
-          }`
-        );
-      }
+      tx.addInput({
+        sourceTransaction,
+        sourceOutputIndex: utxo.tx_pos,
+        unlockingScriptTemplate: new P2PKH().unlock(privateKey),
+      });
     }
 
-    // Add recipient output
-    try {
-      tx.addOutput({
-        lockingScript: new P2PKH().lock(recipientAddress),
-        satoshis: FAUCET_AMOUNT,
-      });
+    // Add outputs
+    tx.addOutput({
+      lockingScript: new P2PKH().lock(recipientAddress),
+      satoshis: FAUCET_AMOUNT,
+    });
 
-      // Add OP_RETURN output
-      tx.addOutput({
-        lockingScript: new Script([
-          { op: OP.OP_FALSE },
-          { op: OP.OP_RETURN },
-          {
-            op: OP.OP_PUSHDATA1,
-            data: Array.from(new TextEncoder().encode(FAUCET_IDENTIFIER)),
-          },
-        ]),
-        satoshis: 0,
-      });
-    } catch (err) {
-      console.error("Error adding outputs:", err);
-      throw new Error(
-        `Failed to add outputs: ${
-          err instanceof Error ? err.message : "Unknown error"
-        }`
-      );
-    }
+    tx.addOutput({
+      lockingScript: new Script([
+        { op: OP.OP_FALSE },
+        { op: OP.OP_RETURN },
+        {
+          op: OP.OP_PUSHDATA1,
+          data: Array.from(new TextEncoder().encode(FAUCET_IDENTIFIER)),
+        },
+      ]),
+      satoshis: 0,
+    });
 
-    // Calculate fee and add change output
+    // Calculate fee and add change
     const feeModel = new SatoshisPerKilobyte(0.5);
     const fee = await feeModel.computeFee(tx);
     const changeAmount = inputSum - FAUCET_AMOUNT - fee;
-
-    if (changeAmount < 0) {
-      throw new Error(
-        `Insufficient funds after fee calculation. Need ${Math.abs(
-          changeAmount
-        )} more satoshis.`
-      );
-    }
 
     if (changeAmount > 0) {
       tx.addOutput({
@@ -266,19 +224,32 @@ exports.handler = async (event) => {
     // Sign transaction
     await tx.sign();
 
+    // Simple polyfill for crypto (only if broadcast fails with crypto error)
+    if (
+      typeof globalThis.crypto === "undefined" ||
+      typeof globalThis.crypto.getRandomValues === "undefined"
+    ) {
+      globalThis.crypto = globalThis.crypto || {};
+      globalThis.crypto.getRandomValues = function (buffer) {
+        const bytes = crypto.randomBytes(buffer.length);
+        buffer.set(new Uint8Array(bytes));
+        return buffer;
+      };
+    }
+
     // Broadcast transaction
     const result = await tx.broadcast();
+
     if (!result) {
       throw new Error("Failed to broadcast transaction");
     }
 
     const txid = result.txid || result.toString();
-    console.log(`Transaction broadcast success: ${txid}`);
 
-    // Record this claim for rate limiting
+    // Record claim
     recordClaim(recipientAddress, ipAddress);
 
-    // Return success response
+    // Return success
     return {
       statusCode: 200,
       headers,
