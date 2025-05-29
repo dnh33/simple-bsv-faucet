@@ -7,8 +7,11 @@ interface SuccessNotificationProps {
 export function SuccessNotification({ txid }: SuccessNotificationProps) {
   if (!txid) return null;
 
+  // Ensure txid is a string before processing
+  const txidString = typeof txid === 'string' ? txid : String(txid);
+
   // Strip any quotes from the txid - handle all possible quote scenarios
-  let cleanTxid = txid;
+  let cleanTxid = txidString;
   
   // Remove all types of quotes and URL encoding
   cleanTxid = cleanTxid

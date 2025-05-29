@@ -91,6 +91,9 @@ async function fetchTransactionCached(txid) {
 // In-memory cache for rate limiting (will reset on Lambda cold start)
 const recentClaims = {};
 
+// Cost optimization: Track recent transactions to prevent duplicates
+const recentTransactions = new Map();
+
 // Rate limiting function with time-based constraints
 function isRateLimited(address, ipAddress) {
   const now = Date.now();
@@ -345,6 +348,20 @@ async function broadcastTxSafely(tx) {
 
       if (!response.ok) {
         const errorText = await response.text();
+        
+        // Handle mempool conflicts gracefully
+        if (errorText.includes("already in the mempool") || 
+            errorText.includes("Transaction already in") ||
+            errorText.includes("txn-mempool-conflict")) {
+          console.log("Transaction already in mempool, extracting txid from hex...");
+          
+          // Calculate txid from the transaction hex
+          const txid = await tx.id();
+          console.log("Calculated txid from existing transaction:", txid);
+          
+          return { txid };
+        }
+        
         throw new Error(
           `WhatsOnChain API error (${response.status}): ${errorText}`
         );
@@ -426,6 +443,13 @@ export const handler = async (event) => {
       }
     }
 
+    // Clean old transaction records
+    for (const [key, value] of recentTransactions.entries()) {
+      if (now - value.timestamp > 60000) { // 1 minute cleanup
+        recentTransactions.delete(key);
+      }
+    }
+
     // Check rate limits
     const rateLimitCheck = isRateLimited(recipientAddress, ipAddress);
     if (rateLimitCheck.limited) {
@@ -435,6 +459,23 @@ export const handler = async (event) => {
         body: JSON.stringify({
           error: rateLimitCheck.reason,
           remainingTime: rateLimitCheck.remainingTime || 0,
+        }),
+      };
+    }
+
+    // Cost optimization: Check for recent duplicate transactions
+    const txKey = `${recipientAddress}_${FAUCET_AMOUNT}`;
+    const recentTx = recentTransactions.get(txKey);
+    if (recentTx && Date.now() - recentTx.timestamp < 30000) { // 30 second window
+      console.log(`Duplicate transaction detected for ${recipientAddress}, returning existing txid`);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          txid: recentTx.txid,
+          amount: FAUCET_AMOUNT,
+          message: "BSV sent successfully (duplicate request handled)",
+          nextClaimTime: Date.now() + MIN_TIME_BETWEEN_CLAIMS,
         }),
       };
     }
@@ -614,6 +655,9 @@ export const handler = async (event) => {
 
     // Record this claim for rate limiting
     recordClaim(recipientAddress, ipAddress);
+
+    // Record the transaction in the recentTransactions map
+    recentTransactions.set(txKey, { txid, timestamp: Date.now() });
 
     // Return success response
     return {
