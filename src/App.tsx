@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useUTXOs, useBonusSystem } from "./utils/hooks";
 import { logger } from "./utils/logger";
+import JSConfetti from "js-confetti";
 
 import { FaucetInfo } from "./components/FaucetInfo";
 import { AddressInput } from "./components/AddressInput";
@@ -26,6 +27,9 @@ function App() {
   const [walletCopySuccess, setWalletCopySuccess] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState(0);
   const [nextClaimTime, setNextClaimTime] = useState(0);
+
+  // Initialize confetti once
+  const [jsConfetti] = useState(() => new JSConfetti());
 
   // Hardcoded faucet address
   const faucetAddress = "14mzuLyaY1nj8jBzb5AkLZniJUdiwTQXEw";
@@ -168,6 +172,39 @@ function App() {
         logger.info("Updating balance after successful claim");
         updateBalance();
       }, 2000);
+
+      // Trigger celebratory confetti with crypto theme
+      const celebrateSuccess = async () => {
+        // First burst - money and celebration emojis
+        await jsConfetti.addConfetti({
+          emojis: ['💰', '🎉', '💎', '🚀', '✨', '💫'],
+          emojiSize: 50,
+          confettiNumber: 40,
+        });
+        
+        // Second burst - Bitcoin/BSV themed
+        setTimeout(() => {
+          jsConfetti.addConfetti({
+            emojis: ['₿', '💸', '🏆', '🌟'],
+            emojiSize: 60,
+            confettiNumber: 25,
+          });
+        }, 300);
+        
+        // Third burst - traditional confetti colors (BSV orange/gold theme)
+        setTimeout(() => {
+          jsConfetti.addConfetti({
+            confettiColors: [
+              '#ff6b35', '#ff8c42', '#ffa726', '#ffb74d', 
+              '#ffcc02', '#ffd700', '#ffffff', '#f5f5f5'
+            ],
+            confettiNumber: 100,
+            confettiRadius: 8,
+          });
+        }, 600);
+      };
+      
+      celebrateSuccess();
     } catch (error) {
       logger.error("Error processing claim:", error);
       setStatus(
