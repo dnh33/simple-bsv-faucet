@@ -284,7 +284,9 @@ async function broadcastTxSafely(tx) {
       }
 
       // WhatsOnChain returns txid directly as text
-      const txid = await response.text();
+      const rawTxid = await response.text();
+      // Strip any surrounding quotes that WhatsOnChain might include
+      const txid = rawTxid.replace(/^"(.*)"$/, '$1');
       console.log("WhatsOnChain broadcast successful, txid:", txid);
 
       // Return the txid in the format expected by the calling code
