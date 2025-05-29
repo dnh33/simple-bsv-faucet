@@ -39,6 +39,55 @@ const MIN_TIME_BETWEEN_CLAIMS = parseInt(
 const WOC_API_URL = "https://api.whatsonchain.com/v1/bsv/main";
 const BITAILS_API_URL = "https://api.bitails.io";
 
+// Cost optimization: Cache API responses to reduce external calls
+const API_CACHE_TTL = 30000; // 30 seconds cache
+const apiCache = new Map();
+
+// Cost optimization: Pre-initialize expensive objects to reduce cold start time
+let faucetPrivateKey = null;
+let faucetAddress = null;
+
+// Initialize expensive objects once
+function initializeOnce() {
+  if (!faucetPrivateKey) {
+    faucetPrivateKey = PrivateKey.fromWif(FAUCET_PRIVATE_KEY);
+    faucetAddress = faucetPrivateKey.toAddress().toString();
+    console.log(`Initialized faucet address: ${faucetAddress}`);
+  }
+  return { faucetPrivateKey, faucetAddress };
+}
+
+// Cost optimization: Simple address validation to fail fast
+function isValidBSVAddress(address) {
+  // Basic BSV address validation (starts with 1 or 3, correct length)
+  return /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(address);
+}
+
+// Cost optimization: Cached transaction fetching
+async function fetchTransactionCached(txid) {
+  const cacheKey = `tx_${txid}`;
+  const cached = apiCache.get(cacheKey);
+  
+  if (cached && Date.now() - cached.timestamp < API_CACHE_TTL) {
+    console.log(`Using cached transaction ${txid}`);
+    return cached.data;
+  }
+  
+  console.log(`Fetching transaction ${txid}`);
+  const response = await fetch(`${WOC_API_URL}/tx/${txid}/hex`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch source transaction: ${response.statusText}`);
+  }
+  
+  const hexString = await response.text();
+  const sourceTransaction = Transaction.fromHex(hexString);
+  
+  // Cache the transaction
+  apiCache.set(cacheKey, { data: sourceTransaction, timestamp: Date.now() });
+  
+  return sourceTransaction;
+}
+
 // In-memory cache for rate limiting (will reset on Lambda cold start)
 const recentClaims = {};
 
@@ -107,6 +156,14 @@ function recordClaim(address, ipAddress) {
 async function fetchUTXOs(address) {
   console.log(`Attempting to fetch UTXOs for ${address}`);
 
+  // Cost optimization: Check cache first
+  const cacheKey = `utxos_${address}`;
+  const cached = apiCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < API_CACHE_TTL) {
+    console.log(`Using cached UTXOs for ${address}`);
+    return cached.data;
+  }
+
   // Helper function for timeout control
   const fetchWithTimeout = async (url, options = {}, timeout = 7000) => {
     const controller = new AbortController();
@@ -161,7 +218,12 @@ async function fetchUTXOs(address) {
     console.log(
       `Successfully fetched ${transformedUtxos.length} UTXOs from WhatsOnChain API`
     );
-    return { utxos: transformedUtxos, source: "whatsonchain" };
+    const result = { utxos: transformedUtxos, source: "whatsonchain" };
+    
+    // Cost optimization: Cache successful response
+    apiCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    
+    return result;
   } catch (wocError) {
     console.log(`WhatsOnChain API UTXO fetch failed: ${wocError.message}`);
     console.log("Error details:", wocError.stack || "No stack trace available");
@@ -201,7 +263,12 @@ async function fetchUTXOs(address) {
       console.log(
         `Successfully fetched ${transformedUtxos.length} UTXOs from Bitails`
       );
-      return { utxos: transformedUtxos, source: "bitails" };
+      const result = { utxos: transformedUtxos, source: "bitails" };
+      
+      // Cost optimization: Cache successful response
+      apiCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      
+      return result;
     } catch (bitailsError) {
       console.log(`Bitails UTXO fetch failed: ${bitailsError.message}`);
       console.log(
@@ -342,6 +409,23 @@ export const handler = async (event) => {
       };
     }
 
+    // Cost optimization: Early validation to fail fast
+    if (!isValidBSVAddress(recipientAddress)) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: "Invalid BSV address format" }),
+      };
+    }
+
+    // Cost optimization: Clean old cache entries to prevent memory bloat
+    const now = Date.now();
+    for (const [key, value] of apiCache.entries()) {
+      if (now - value.timestamp > API_CACHE_TTL * 2) {
+        apiCache.delete(key);
+      }
+    }
+
     // Check rate limits
     const rateLimitCheck = isRateLimited(recipientAddress, ipAddress);
     if (rateLimitCheck.limited) {
@@ -356,9 +440,7 @@ export const handler = async (event) => {
     }
 
     // Initialize with BSV SDK only
-    const privateKey = PrivateKey.fromWif(FAUCET_PRIVATE_KEY);
-    const faucetAddress = privateKey.toAddress().toString();
-    console.log(`Using faucet address: ${faucetAddress}`);
+    const { faucetPrivateKey, faucetAddress } = initializeOnce();
 
     // Fetch UTXOs using direct API calls with fallbacks
     console.log(`Fetching UTXOs for address: ${faucetAddress}`);
@@ -440,21 +522,13 @@ export const handler = async (event) => {
       try {
         // Fetch the source transaction
         console.log(`Fetching source transaction ${utxo.txid}`);
-        const txResponse = await fetch(`${WOC_API_URL}/tx/${utxo.txid}/hex`);
-        if (!txResponse.ok) {
-          throw new Error(
-            `Failed to fetch source transaction: ${txResponse.statusText}`
-          );
-        }
-
-        const hexString = await txResponse.text();
-        const sourceTransaction = Transaction.fromHex(hexString);
+        const sourceTransaction = await fetchTransactionCached(utxo.txid);
         console.log(`Successfully parsed source transaction ${utxo.txid}`);
 
         tx.addInput({
           sourceTransaction,
           sourceOutputIndex: utxo.vout,
-          unlockingScriptTemplate: new P2PKH().unlock(privateKey),
+          unlockingScriptTemplate: new P2PKH().unlock(faucetPrivateKey),
         });
       } catch (err) {
         console.error("Error adding input:", err);

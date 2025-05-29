@@ -7,11 +7,18 @@ interface SuccessNotificationProps {
 export function SuccessNotification({ txid }: SuccessNotificationProps) {
   if (!txid) return null;
 
-  // Strip any surrounding quotes from the txid (both regular and URL-encoded)
-  const cleanTxid = txid
-    .replace(/^"(.*)"$/, '$1')  // Remove regular quotes
-    .replace(/^%22(.*)%22$/, '$1')  // Remove URL-encoded quotes
-    .replace(/%22/g, '');  // Remove any remaining URL-encoded quotes
+  // Strip any quotes from the txid - handle all possible quote scenarios
+  let cleanTxid = txid;
+  
+  // Remove all types of quotes and URL encoding
+  cleanTxid = cleanTxid
+    .replace(/['"]/g, '')        // Remove all single and double quotes
+    .replace(/%22/g, '')         // Remove URL-encoded quotes
+    .replace(/%27/g, '')         // Remove URL-encoded single quotes
+    .trim();                     // Remove whitespace
+
+  console.log('Original txid:', txid);
+  console.log('Clean txid:', cleanTxid);
 
   return (
     <div className="notification success">
