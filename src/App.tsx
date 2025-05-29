@@ -173,38 +173,23 @@ function App() {
         updateBalance();
       }, 2000);
 
-      // Trigger celebratory confetti with crypto theme
-      const celebrateSuccess = async () => {
-        // First burst - money and celebration emojis
-        await jsConfetti.addConfetti({
-          emojis: ['💰', '🎉', '💎', '🚀', '✨', '💫'],
-          emojiSize: 50,
-          confettiNumber: 40,
-        });
-        
-        // Second burst - Bitcoin/BSV themed
-        setTimeout(() => {
-          jsConfetti.addConfetti({
-            emojis: ['₿', '💸', '🏆', '🌟'],
-            emojiSize: 60,
-            confettiNumber: 25,
-          });
-        }, 300);
-        
-        // Third burst - traditional confetti colors (BSV orange/gold theme)
-        setTimeout(() => {
-          jsConfetti.addConfetti({
-            confettiColors: [
-              '#ff6b35', '#ff8c42', '#ffa726', '#ffb74d', 
-              '#ffcc02', '#ffd700', '#ffffff', '#f5f5f5'
-            ],
-            confettiNumber: 100,
-            confettiRadius: 8,
-          });
-        }, 600);
-      };
-      
-      celebrateSuccess();
+      // Trigger celebratory confetti - optimized single burst
+      jsConfetti.addConfetti({
+        confettiColors: [
+          '#FF6B35', // BSV Orange
+          '#FFD700', // Gold
+          '#FF8C42', // Light Orange  
+          '#FFA726', // Amber
+          '#4CAF50', // Success Green
+          '#2196F3', // Blue
+          '#9C27B0', // Purple
+          '#E91E63', // Pink
+          '#FFEB3B', // Yellow
+          '#00BCD4', // Cyan
+        ],
+        confettiRadius: 6,
+        confettiNumber: 150,
+      });
     } catch (error) {
       logger.error("Error processing claim:", error);
       setStatus(
